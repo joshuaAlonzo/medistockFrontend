@@ -1,6 +1,6 @@
 import { useState } from "react";
 import { Link, useLocation } from "wouter";
-import { Activity, ArrowLeft, ArrowRight, BriefcaseMedical, CircleAlert, ShieldCheck, ShoppingBag } from "lucide-react";
+import { Activity, ArrowLeft, ArrowRight, CircleAlert, ShieldCheck } from "lucide-react";
 import { useAuth } from "../contexts/AuthContext";
 import { checkApiHealth, DISPLAY_CURRENCIES, getApiBaseUrl, getDisplayCurrency, login, registerCustomer, requestPasswordReset, resetPassword, roleFromId, saveApiBaseUrl, saveDisplayCurrency, type RoleName } from "../lib/pharmacyApi";
 
@@ -8,17 +8,7 @@ function Brand() {
   return <div className="auth-brand"><img src="/brand-icon.svg" alt="" /><span><strong>MediStock</strong><small>pharmacy operations</small></span></div>;
 }
 
-function RoleDemoEntry({ onChoose }: { onChoose: (role: RoleName) => void }) {
-  return <>
-    <div className="auth-divider">Explore a sample workspace</div>
-    <div className="demo-role-grid">
-      <button className="demo-role" onClick={() => onChoose("admin")}><ShieldCheck size={17} />Admin</button>
-      <button className="demo-role" onClick={() => onChoose("staff")}><BriefcaseMedical size={17} />Staff</button>
-      <button className="demo-role" onClick={() => onChoose("customer")}><ShoppingBag size={17} />Customer</button>
-    </div>
-    <p className="auth-footnote">Sample records are fictional and stay in this browser session. They are not connected to your pharmacy API.</p>
-  </>;
-}
+
 
 export function AuthPage({ mode }: { mode: "login" | "signup" | "reset" }) {
   const [, setLocation] = useLocation();
@@ -32,11 +22,7 @@ export function AuthPage({ mode }: { mode: "login" | "signup" | "reset" }) {
   const heading = mode === "signup" ? "Create your account" : mode === "reset" ? "Reset your password" : "Welcome back";
 
   const update = (key: keyof typeof form, value: string) => setForm((old) => ({ ...old, [key]: value }));
-  const goForRole = (role: RoleName) => {
-    const roleId = role === "admin" ? 1 : role === "staff" ? 2 : 3;
-    signIn({ token: "demo-session", userId: role === "customer" ? 301 : role === "staff" ? 202 : 201, username: `${role} preview`, roleId, mode: "demo" });
-    setLocation(`/${role}`);
-  };
+
 
   async function submit(event: React.FormEvent<HTMLFormElement>) {
     event.preventDefault(); setError(""); setSuccess(""); setBusy(true);
@@ -110,8 +96,7 @@ export function AuthPage({ mode }: { mode: "login" | "signup" | "reset" }) {
           <button className="button button-primary" type="submit" disabled={busy}>{busy ? "Updating…" : "Set new password"}</button>
         </>}
       </form>}
-      {mode === "login" && <RoleDemoEntry onChoose={goForRole} />}
-      <p className="auth-footnote">API connection not set up yet? <Link href="/settings" className="text-button">Configure connection <ArrowRight size={13} /></Link></p>
+
     </section>
   </main></div>;
 }
