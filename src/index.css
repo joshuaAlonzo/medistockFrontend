@@ -127,7 +127,7 @@ button:focus-visible, input:focus-visible, textarea:focus-visible, select:focus-
 .status-neutral { color: #69716d; background: #f1f3f1; border-color: #e7e9e7; }
 
 .table-panel { overflow: hidden; }
-.table-toolbar { padding: 15px 17px; display: flex; align-items: center; gap: 9px; flex-wrap: wrap; border-bottom: 1px solid #eff0ef; }
+.table-toolbar { padding: 15px 17px; display: flex; align-items: center; gap: 9px; flex-wrap: wrap; border-bottom: 1px solid #eff0ef; position: sticky; top: 0; z-index: 10; background: var(--panel); }
 .table-search { min-width: 190px; flex: 1; max-width: 360px; height: 36px; display: flex; align-items: center; gap: 8px; padding: 0 10px; border: 1px solid #e7eae7; border-radius: 10px; color: #969e99; }
 .table-search input { width: 100%; outline: 0; border: 0; color: var(--ink); background: transparent; font-size: 11px; }
 .filter-select, .select-control { height: 36px; padding: 0 11px; border: 1px solid #e7eae7; border-radius: 10px; background: #fff; color: #565e5a; font-size: 11px; }
