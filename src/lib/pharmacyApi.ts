@@ -582,6 +582,7 @@ export const api = {
   async updateSupplier(id: number, value: Partial<Supplier> & { supplierName: string }) { return request<unknown>(`/api/supplier/${id}`, { method: "PUT", body: JSON.stringify(value) }); },
   async deleteSupplier(id: number) { return request<unknown>(`/api/supplier/${id}`, { method: "DELETE" }); },
   async updateOrderStatus(id: number, status: string) { return request<unknown>(`/api/order/${id}/status`, { method: "PUT", body: JSON.stringify({ status }) }); },
+  async cancelOrder(id: number) { return request<unknown>(`/api/order/${id}/cancel`, { method: "PUT" }); },
   async deleteOrder(id: number) { return request<unknown>(`/api/order/${id}`, { method: "DELETE" }); },
   async addToCart(userId: number, medicineId: number, quantity: number, subtotal: number) { return request<unknown>("/api/cart", { method: "POST", body: JSON.stringify({ userId, medicineId, quantity, subtotal }) }); },
   async updateCart(id: number, quantity: number, subtotal: number) { return request<unknown>(`/api/cart/${id}`, { method: "PUT", body: JSON.stringify({ quantity, subtotal }) }); },
