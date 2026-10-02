@@ -80,8 +80,8 @@ export function AuthPage({ mode }: { mode: "login" | "signup" | "reset" }) {
           <div className="form-field"><label htmlFor="signup-password">Password</label><input id="signup-password" type="password" minLength={8} required autoComplete="new-password" value={form.password} onChange={(e) => update("password", e.target.value)} /></div>
           <div className="form-field"><label htmlFor="signup-confirm">Confirm password</label><input id="signup-confirm" type="password" minLength={8} required autoComplete="new-password" value={form.confirm} onChange={(e) => update("confirm", e.target.value)} /></div>
         </div>
-        <p className="auth-footnote">Public sign-up creates a customer account only. Staff and admin access must be provisioned by an administrator.</p>
-        <button className="button button-primary" type="submit" disabled={busy}>{busy ? "Creating account…" : "Create customer account"}</button>
+
+        <button className="button button-primary" type="submit" disabled={busy}>{busy ? "Creating account…" : "Create account"}</button>
       </form>}
       {mode === "reset" && <form className="auth-form" onSubmit={submit}>
         {resetPhase === "request" ? <>

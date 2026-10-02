@@ -1,6 +1,6 @@
 import { useState, type ReactNode } from "react";
 import { useLocation } from "wouter";
-import { Activity, ArrowDownLeft, ArrowLeftRight, Bell, Boxes, Building2, ClipboardList, LayoutDashboard, LogOut, Menu, Search, Settings, ShieldCheck, ShoppingBag, ShoppingCart, Tags, Users, X } from "lucide-react";
+import { Activity, ArrowDownLeft, ArrowLeftRight, Bell, Boxes, Building2, ClipboardList, LayoutDashboard, LogOut, Menu, Search, ShieldCheck, ShoppingBag, ShoppingCart, Tags, Users, X } from "lucide-react";
 import type { RoleName, Session } from "../lib/pharmacyApi";
 
 interface AppShellProps {
@@ -78,7 +78,7 @@ export default function AppShell({ role, session, children, onLogout, search, on
           })}
         </nav>
         <div className="sidebar-spacer" />
-        <button className="nav-item quiet-nav" onClick={() => go("/settings")}><Settings size={18} /><span>API connection</span></button>
+
         <div className="sidebar-footer">
           <div className="user-avatar">{initials}</div>
           <div className="user-meta"><strong>{session.username || roleTitles[role]}</strong><small>{session.mode === "demo" ? "Sample preview" : roleTitles[role]}</small></div>
