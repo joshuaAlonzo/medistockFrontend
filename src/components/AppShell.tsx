@@ -10,6 +10,7 @@ interface AppShellProps {
   onLogout: () => void;
   search: string;
   onSearch: (value: string) => void;
+  profileImage?: string | null;
 }
 
 const nav = {
@@ -40,9 +41,9 @@ const nav = {
   ],
 } satisfies Record<RoleName, { key: string; label: string; icon: typeof LayoutDashboard }[]>;
 
-const roleTitles: Record<RoleName, string> = { admin: "Administrator", staff: "Staff workspace", customer: "Customer space" };
+const roleTitles: Record<RoleName, string> = { admin: "Administrator", staff: "Staff", customer: "Customer space" };
 
-export default function AppShell({ role, session, children, onLogout, search, onSearch }: AppShellProps) {
+export default function AppShell({ role, session, children, onLogout, search, onSearch, profileImage }: AppShellProps) {
   const [location, setLocation] = useLocation();
   const [mobileOpen, setMobileOpen] = useState(false);
   const [noticeOpen, setNoticeOpen] = useState(false);
@@ -80,7 +81,7 @@ export default function AppShell({ role, session, children, onLogout, search, on
         <div className="sidebar-spacer" />
 
         <div className="sidebar-footer">
-          <div className="user-avatar">{initials}</div>
+          <div className="user-avatar">{profileImage ? <img src={profileImage} alt="" style={{ width: "36px", height: "36px", objectFit: "cover", display: "block" }} /> : initials}</div>
           <div className="user-meta"><strong>{session.username || roleTitles[role]}</strong><small>{session.mode === "demo" ? "Sample preview" : roleTitles[role]}</small></div>
           <button className="icon-button logout-button" onClick={onLogout} title="Sign out" aria-label="Sign out"><LogOut size={17} /></button>
         </div>
@@ -89,11 +90,11 @@ export default function AppShell({ role, session, children, onLogout, search, on
       <main className="app-main">
         <header className="topbar">
           <button className="mobile-menu icon-button" onClick={() => setMobileOpen(true)} aria-label="Open navigation"><Menu size={20} /></button>
-          <div className="topbar-heading"><span className="eyebrow">{roleTitles[role]}</span><h1>{pageTitle}</h1></div>
+          <div className="topbar-heading">{role === "admin" && <span className="eyebrow">{roleTitles[role]}</span>}<h1>{pageTitle}</h1></div>
           <label className="global-search"><Search size={17} /><input value={search} onChange={(event) => onSearch(event.target.value)} placeholder="Search this workspace…" aria-label="Search this workspace" />{search && <button type="button" className="clear-search" onClick={() => onSearch("")} aria-label="Clear search"><X size={14} /></button>}</label>
           <div className="topbar-actions">
             <button className={`icon-button notice-trigger ${noticeOpen ? "icon-button-active" : ""}`} onClick={() => setNoticeOpen(!noticeOpen)} aria-label="Connection status"><Bell size={18} /><span className="notify-dot" /></button>
-            <button className="avatar-button" onClick={() => go(role === "customer" ? "/customer/profile" : "/settings")} title="Account / settings">{initials}</button>
+            <button className="avatar-button" onClick={() => go(`/${role}/profile`)} title="My profile">{profileImage ? <img src={profileImage} alt="" style={{ width: "36px", height: "36px", objectFit: "cover", display: "block" }} /> : initials}</button>
           </div>
           {noticeOpen && <div className="notice-popover"><strong>Workspace status</strong><p>{session.mode === "demo" ? "Sample data is active. No live API records are displayed." : "API mode is active. Data availability depends on your API connection."}</p><button className="text-button" onClick={() => go("/settings")}>Open API settings <ArrowLeftRight size={13} /></button></div>}
         </header>

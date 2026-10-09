@@ -8,6 +8,24 @@ function Brand() {
   return <div className="auth-brand"><img src="/brand-icon.svg" alt="" /><span><strong>MediStock</strong><small>pharmacy operations</small></span></div>;
 }
 
+function getPasswordStrength(password: string) {
+  if (!password) return null;
+  const hasUpper = /[A-Z]/.test(password);
+  const hasNumber = /[0-9]/.test(password);
+  const hasSpecial = /[^A-Za-z0-9]/.test(password);
+
+  if (hasSpecial) return { label: "Invalid (No special characters)", color: "#e74c3c", width: "100%" };
+
+  let score = 0;
+  if (password.length >= 8) score += 1;
+  if (hasUpper) score += 1;
+  if (hasNumber) score += 1;
+
+  if (score <= 1) return { label: "Weak", color: "#e74c3c", width: "33%" };
+  if (score === 2) return { label: "Normal", color: "#f39c12", width: "66%" };
+  return { label: "Strong", color: "#2ecc71", width: "100%" };
+}
+
 
 
 export function AuthPage({ mode }: { mode: "login" | "signup" | "reset" }) {
@@ -18,7 +36,7 @@ export function AuthPage({ mode }: { mode: "login" | "signup" | "reset" }) {
   const [success, setSuccess] = useState("");
   const [resetToken, setResetToken] = useState("");
   const [resetPhase, setResetPhase] = useState<"request" | "change">("request");
-  const [form, setForm] = useState({ username: "", password: "", confirm: "", firstName: "", lastName: "", email: "", contactNumber: "", newPassword: "" });
+  const [form, setForm] = useState({ username: "", password: "", confirm: "", firstName: "", lastName: "", email: "", contactNumber: "", newPassword: "", emailOrPhone: "" });
   const heading = mode === "signup" ? "Create your account" : mode === "reset" ? "Reset your password" : "Welcome back";
 
   const update = (key: keyof typeof form, value: string) => setForm((old) => ({ ...old, [key]: value }));
@@ -35,21 +53,25 @@ export function AuthPage({ mode }: { mode: "login" | "signup" | "reset" }) {
         setLocation(`/${role}`);
       } else if (mode === "signup") {
         if (form.password.length < 8) throw new Error("Use a password with at least 8 characters.");
+        if (!/[A-Z]/.test(form.password) || !/[0-9]/.test(form.password)) throw new Error("Password needs to have uppercase and numbers.");
+        if (/[^A-Za-z0-9]/.test(form.password)) throw new Error("Do not use special characters in your password.");
         if (form.password !== form.confirm) throw new Error("The password confirmation does not match.");
         const session = await registerCustomer({ username: form.username.trim(), password: form.password, firstName: form.firstName.trim(), lastName: form.lastName.trim(), email: form.email.trim(), contactNumber: form.contactNumber.trim() });
         signIn(session); setLocation("/customer");
       } else if (resetPhase === "request") {
-        if (!form.username.trim()) throw new Error("Enter the username associated with your account.");
-        const result = await requestPasswordReset(form.username.trim());
+        if (!form.emailOrPhone.trim()) throw new Error("Enter the email or phone number associated with your account.");
+        const result = await requestPasswordReset(form.emailOrPhone.trim());
         if (import.meta.env.DEV && result.resetToken) {
           setResetToken(result.resetToken); setResetPhase("change");
-          setSuccess("Development-only token received. This API returns reset tokens directly; do not use this flow as production email delivery.");
+          setSuccess("Development-only OTP received. This API returns OTP directly in dev mode.");
         } else {
-          setSuccess("If the account exists, reset instructions will be provided by the API. This API does not currently deliver a verified email token; contact your administrator to complete production password recovery.");
+          setSuccess(result.message);
         }
       } else {
         if (!resetToken.trim()) throw new Error("Enter the reset token provided through your trusted reset channel.");
         if (form.newPassword.length < 8) throw new Error("Use a new password with at least 8 characters.");
+        if (!/[A-Z]/.test(form.newPassword) || !/[0-9]/.test(form.newPassword)) throw new Error("Password needs to have uppercase and numbers.");
+        if (/[^A-Za-z0-9]/.test(form.newPassword)) throw new Error("Do not use special characters in your password.");
         if (form.newPassword !== form.confirm) throw new Error("The password confirmation does not match.");
         const message = await resetPassword(resetToken.trim(), form.newPassword);
         setSuccess(message); setResetPhase("request"); setResetToken(""); setForm((old) => ({ ...old, password: "", newPassword: "", confirm: "" }));
@@ -59,9 +81,9 @@ export function AuthPage({ mode }: { mode: "login" | "signup" | "reset" }) {
   }
 
   return <div className="auth-page"><main className="auth-card">
-    <section className="auth-art"><Brand /><div className="auth-art-copy"><h2>Care, stocked<br />and in motion.</h2><p>A clearer way to manage medicine, inventory, and everyday pharmacy orders.</p><div className="auth-art-card"><strong>Every role, one calm workspace</strong><span>Keep stock visible, move orders forward, and give customers a simple way to shop.</span></div></div></section>
+    <section className="auth-art"><Brand /><div className="auth-art-copy"><h2>Medicine orders, handled fast.</h2></div></section>
     <section className="auth-body">
-      <div style={{ display: "flex", alignItems: "center", justifyContent: "space-between", gap: 12 }}><div><h1>{heading}</h1><p>{mode === "signup" ? "Create a customer account to browse and order medicines." : mode === "reset" ? "Request a reset and continue with a trusted token." : "Sign in to open your pharmacy workspace."}</p></div>{mode !== "login" && <Link href="/login" className="text-button"><ArrowLeft size={14} />Sign in</Link>}</div>
+      <div style={{ marginBottom: 16 }}><h1>{heading}</h1>{mode !== "signup" && <p>{mode === "reset" ? "Request an OTP to your email or phone number to reset your password." : "Sign in to open your pharmacy workspace."}</p>}</div>
       {error && <div className="inline-alert error" role="alert"><CircleAlert size={16} /><span>{error}</span></div>}
       {success && <div className="inline-alert success" role="status"><Activity size={15} /><span>{success}</span></div>}
       {mode === "login" && <form className="auth-form" onSubmit={submit}>
@@ -77,23 +99,56 @@ export function AuthPage({ mode }: { mode: "login" | "signup" | "reset" }) {
           <div className="form-field"><label htmlFor="signup-email">Email</label><input id="signup-email" type="email" required autoComplete="email" value={form.email} onChange={(e) => update("email", e.target.value)} /></div>
           <div className="form-field"><label htmlFor="signup-contact">Contact number</label><input id="signup-contact" autoComplete="tel" value={form.contactNumber} onChange={(e) => update("contactNumber", e.target.value)} /></div>
           <div className="form-field full"><label htmlFor="signup-username">Username</label><input id="signup-username" required autoComplete="username" value={form.username} onChange={(e) => update("username", e.target.value)} /></div>
-          <div className="form-field"><label htmlFor="signup-password">Password</label><input id="signup-password" type="password" minLength={8} required autoComplete="new-password" value={form.password} onChange={(e) => update("password", e.target.value)} /></div>
+          <div className="form-field">
+            <label htmlFor="signup-password">Password</label>
+            <input id="signup-password" type="password" minLength={8} required autoComplete="new-password" value={form.password} onChange={(e) => update("password", e.target.value)} />
+            {form.password && (() => {
+              const strength = getPasswordStrength(form.password);
+              return strength && (
+                <div style={{ marginTop: 6, fontSize: "0.85rem" }}>
+                  <div style={{ height: 4, background: "#e0e0e0", borderRadius: 2, overflow: "hidden", marginBottom: 4 }}>
+                    <div style={{ height: "100%", width: strength.width, background: strength.color, transition: "all 0.3s" }} />
+                  </div>
+                  <span style={{ color: strength.color, fontWeight: "bold" }}>{strength.label}</span>
+                </div>
+              );
+            })()}
+            <span style={{ fontSize: "0.8rem", color: "#666", marginTop: 4, display: "block" }}>Requires uppercase and numbers. Do not use special characters.</span>
+          </div>
           <div className="form-field"><label htmlFor="signup-confirm">Confirm password</label><input id="signup-confirm" type="password" minLength={8} required autoComplete="new-password" value={form.confirm} onChange={(e) => update("confirm", e.target.value)} /></div>
         </div>
 
         <button className="button button-primary" type="submit" disabled={busy}>{busy ? "Creating account…" : "Create account"}</button>
+        <div className="auth-links" style={{ justifyContent: "center", marginTop: 16 }}><span>Already have an account? <Link href="/login">Sign in</Link></span></div>
       </form>}
       {mode === "reset" && <form className="auth-form" onSubmit={submit}>
         {resetPhase === "request" ? <>
-          <div className="form-field"><label htmlFor="reset-username">Username</label><input id="reset-username" required autoComplete="username" value={form.username} onChange={(e) => update("username", e.target.value)} placeholder="Your account username" /></div>
-          <div className="inline-alert"><CircleAlert size={16} /><span>The current API returns its reset token directly instead of sending a verified email. Token display is disabled outside development. Production password recovery needs a secure API email flow.</span></div>
+          <div className="form-field"><label htmlFor="reset-emailOrPhone">Email or Phone number</label><input id="reset-emailOrPhone" required value={form.emailOrPhone} onChange={(e) => update("emailOrPhone", e.target.value)} placeholder="Your email or phone number" /></div>
+          <div className="inline-alert"><CircleAlert size={16} /><span>An OTP will be sent to your email or phone number to verify your identity.</span></div>
           <button className="button button-primary" type="submit" disabled={busy}>{busy ? "Requesting…" : "Request reset"}</button>
+          <div className="auth-links" style={{ justifyContent: "center", marginTop: 16 }}><Link href="/login" style={{ display: "flex", alignItems: "center", gap: 4 }}><ArrowLeft size={14} /> Back to sign in</Link></div>
         </> : <>
-          {resetToken && <div className="reset-token-box"><strong>Development-only reset token</strong><br />{resetToken}</div>}
-          <div className="form-field"><label htmlFor="reset-token">Reset token</label><input id="reset-token" required value={resetToken} onChange={(e) => setResetToken(e.target.value)} placeholder="Paste token from trusted delivery" /></div>
-          <div className="form-field"><label htmlFor="new-password">New password</label><input id="new-password" type="password" required minLength={8} autoComplete="new-password" value={form.newPassword} onChange={(e) => update("newPassword", e.target.value)} /></div>
+          {resetToken && <div className="reset-token-box"><strong>Development-only OTP</strong><br />{resetToken}</div>}
+          <div className="form-field"><label htmlFor="reset-token">OTP</label><input id="reset-token" required value={resetToken} onChange={(e) => setResetToken(e.target.value)} placeholder="Enter the OTP sent to your email or phone" /></div>
+          <div className="form-field">
+            <label htmlFor="new-password">New password</label>
+            <input id="new-password" type="password" required minLength={8} autoComplete="new-password" value={form.newPassword} onChange={(e) => update("newPassword", e.target.value)} />
+            {form.newPassword && (() => {
+              const strength = getPasswordStrength(form.newPassword);
+              return strength && (
+                <div style={{ marginTop: 6, fontSize: "0.85rem" }}>
+                  <div style={{ height: 4, background: "#e0e0e0", borderRadius: 2, overflow: "hidden", marginBottom: 4 }}>
+                    <div style={{ height: "100%", width: strength.width, background: strength.color, transition: "all 0.3s" }} />
+                  </div>
+                  <span style={{ color: strength.color, fontWeight: "bold" }}>{strength.label}</span>
+                </div>
+              );
+            })()}
+            <span style={{ fontSize: "0.8rem", color: "#666", marginTop: 4, display: "block" }}>Requires uppercase and numbers. Do not use special characters.</span>
+          </div>
           <div className="form-field"><label htmlFor="reset-confirm">Confirm new password</label><input id="reset-confirm" type="password" required minLength={8} autoComplete="new-password" value={form.confirm} onChange={(e) => update("confirm", e.target.value)} /></div>
           <button className="button button-primary" type="submit" disabled={busy}>{busy ? "Updating…" : "Set new password"}</button>
+          <div className="auth-links" style={{ justifyContent: "center", marginTop: 16 }}><Link href="/login" style={{ display: "flex", alignItems: "center", gap: 4 }}><ArrowLeft size={14} /> Back to sign in</Link></div>
         </>}
       </form>}
 

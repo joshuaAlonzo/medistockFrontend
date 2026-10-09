@@ -1,6 +1,7 @@
-import { useCallback, useEffect, useMemo, useState, type FormEvent, type ReactNode } from "react";
+import { useCallback, useEffect, useMemo, useRef, useState, type FormEvent, type ReactNode } from "react";
+import CropModal from "../components/CropModal";
 import { useLocation } from "wouter";
-import { Activity, AlertCircle, ArrowDownRight, ArrowRight, ArrowUpRight, Boxes, Building2, Check, ChevronLeft, ChevronRight, CircleAlert, ClipboardList, Clock3, FileText, Map, MapPin, PackagePlus, Pencil, Plus, Search, ShieldCheck, ShoppingBag, ShoppingCart, Tags, Trash2, Truck, Users, X } from "lucide-react";
+import { Activity, AlertCircle, ArrowDownRight, ArrowRight, ArrowUpRight, Boxes, Building2, Camera, Check, ChevronLeft, ChevronRight, CircleAlert, ClipboardList, Clock3, Droplets, Eye, FileText, FlaskConical, Heart, ImageIcon, Map, MapPin, PackagePlus, Pencil, Pill, Plus, Search, ShieldCheck, ShoppingBag, ShoppingCart, Syringe, Tags, Thermometer, Trash2, Truck, Users, Wind, X } from "lucide-react";
 import AppShell from "../components/AppShell";
 import { useAuth } from "../contexts/AuthContext";
 import { api, getActivity, getAllUsers, getCart, getCategories, getCustomerOrders, getDisplayCurrency, getMedicines, getOrders, getRoles, getSuppliers, getUser, getUserActivity, labelForRole, searchActivity, type ActivityLog, type CartItem, type Category, type Medicine, type Order, type PageResult, type RoleName, type Session, type Supplier, type UserRecord, type UserRole } from "../lib/pharmacyApi";
@@ -12,12 +13,13 @@ type SectionData = {
 };
 const EMPTY: SectionData = { medicines: [], categories: [], suppliers: [], orders: [], cart: [], users: [], roles: [], activity: [], profile: null };
 const ROLE_SECTIONS: Record<RoleName, readonly string[]> = {
-  admin: ["overview", "medicines", "categories", "suppliers", "orders", "users", "roles", "activity"],
-  staff: ["overview", "medicines", "categories", "suppliers", "orders", "activity"],
+  admin: ["overview", "medicines", "categories", "suppliers", "orders", "users", "roles", "activity", "profile"],
+  staff: ["overview", "medicines", "categories", "suppliers", "orders", "activity", "profile"],
   customer: ["overview", "shop", "cart", "orders", "profile"],
 };
 type EditorKind = "medicine" | "category" | "supplier" | "user" | "role";
 type EditorState = { kind: EditorKind; item?: Medicine | Category | Supplier | UserRecord | UserRole };
+type ConfirmState = { title: string; body: string; danger?: boolean; onConfirm: () => void };
 
 const money = (value: number) => new Intl.NumberFormat("en-PH", { style: "currency", currency: getDisplayCurrency(), maximumFractionDigits: 2 }).format(Number.isFinite(value) ? value : 0);
 const number = (value: number) => new Intl.NumberFormat("en-PH").format(Number.isFinite(value) ? value : 0);
@@ -67,7 +69,7 @@ function EditorDialog({ editor, categories, roles, onClose, onSubmit }: { editor
     { key: "categoryId", label: "Category", type: "category", required: true }, { key: "dosage", label: "Dosage / pack" },
     { key: "manufacturer", label: "Manufacturer" }, { key: "price", label: "Unit price", type: "number", required: true },
     { key: "stockQty", label: "Stock quantity", type: "number", required: true }, { key: "status", label: "Status", type: "select", options: ["Available", "Out of stock", "Inactive"] },
-    { key: "image", label: "Image URL", full: true }, { key: "description", label: "Description", type: "textarea", full: true },
+    { key: "image", label: "Image", type: "image", full: true }, { key: "description", label: "Description", type: "textarea", full: true },
   ] : editor.kind === "category" ? [{ key: "categoryName", label: "Category name", required: true }] : editor.kind === "supplier" ? [
     { key: "supplierName", label: "Supplier name", required: true }, { key: "contactPerson", label: "Contact person" },
     { key: "contactNumber", label: "Contact number" }, { key: "email", label: "Email", type: "email" },
@@ -87,8 +89,118 @@ function EditorDialog({ editor, categories, roles, onClose, onSubmit }: { editor
     return initial;
   });
   const title = `${editor.item ? "Edit" : "Add"} ${editor.kind === "medicine" ? "medicine" : editor.kind === "category" ? "category" : editor.kind === "supplier" ? "supplier" : editor.kind === "user" ? "user" : "role"}`;
-  return <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="editor-title"><div className="modal-head"><div><h2 id="editor-title">{title}</h2><p>Enter all available record details. Values are sent to your configured API.</p></div><button className="modal-close" onClick={onClose} aria-label="Close"><X size={20} /></button></div><form onSubmit={(event) => { event.preventDefault(); onSubmit(values); }}><div className="form-grid">{fields.map((field) => <div className={`form-field ${field.full ? "full" : ""}`} key={field.key}><label htmlFor={`edit-${field.key}`}>{field.label}</label>{field.type === "textarea" ? <textarea id={`edit-${field.key}`} required={field.required} value={values[field.key] || ""} onChange={(event) => setValues({ ...values, [field.key]: event.target.value })} /> : field.type === "select" || field.type === "category" || field.type === "role" ? <select id={`edit-${field.key}`} required={field.required} value={values[field.key] || ""} onChange={(event) => setValues({ ...values, [field.key]: event.target.value })}>{field.type !== "select" && <option value="">Choose…</option>}{(field.type === "category" ? categories.map((row) => ({ value: String(row.categoryId), label: row.categoryName })) : field.type === "role" ? roles.map((row) => ({ value: String(row.userRoleId), label: `${row.userRole} · ${row.userRoleId}` })) : field.options!.map((option) => ({ value: option, label: option }))).map((option) => <option key={option.value} value={option.value}>{option.label}</option>)}</select> : <input id={`edit-${field.key}`} type={field.type || "text"} min={field.type === "number" ? "0" : undefined} step={field.key === "price" ? "0.01" : undefined} required={field.required} value={values[field.key] || ""} onChange={(event) => setValues({ ...values, [field.key]: event.target.value })} />}</div>)}</div><div className="modal-actions"><button type="button" className="button" onClick={onClose}>Cancel</button><button type="submit" className="button button-green"><Check size={14} />Save record</button></div></form></section></div>;
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="modal" role="dialog" aria-modal="true" aria-labelledby="editor-title">
+        <div className="modal-head">
+          <div><h2 id="editor-title">{title}</h2><p>Enter all available record details. Values are sent to your configured API.</p></div>
+          <button className="modal-close" onClick={onClose} aria-label="Close"><X size={20} /></button>
+        </div>
+        <form onSubmit={(event) => { event.preventDefault(); onSubmit(values); }}>
+          <div className="form-grid">
+            {fields.map((field) => (
+              <div className={`form-field ${field.full ? "full" : ""}`} key={field.key}>
+                <label htmlFor={`edit-${field.key}`}>{field.label}</label>
+                {field.type === "image" ? (
+                  <div
+                    className="image-dropzone"
+                    onDragOver={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = "var(--accent)"; e.currentTarget.style.background = "var(--surface-hover)"; }}
+                    onDragLeave={(e) => { e.preventDefault(); e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = ""; }}
+                    onDrop={(e) => {
+                      e.preventDefault(); e.currentTarget.style.borderColor = "var(--border)"; e.currentTarget.style.background = "";
+                      const file = e.dataTransfer.files[0];
+                      if (file && file.type.startsWith("image/")) {
+                        const r = new FileReader();
+                        r.onload = (ev) => setValues({ ...values, [field.key]: ev.target?.result as string });
+                        r.readAsDataURL(file);
+                      }
+                    }}
+                    onClick={() => {
+                      const input = document.createElement("input");
+                      input.type = "file"; input.accept = "image/*";
+                      input.onchange = (e) => {
+                        const file = (e.target as HTMLInputElement).files?.[0];
+                        if (file) {
+                          const r = new FileReader();
+                          r.onload = (ev) => setValues({ ...values, [field.key]: ev.target?.result as string });
+                          r.readAsDataURL(file);
+                        }
+                      };
+                      input.click();
+                    }}
+                    style={{ border: "2px dashed var(--border)", borderRadius: "8px", padding: "20px", textAlign: "center", cursor: "pointer", minHeight: "120px", display: "flex", alignItems: "center", justifyContent: "center", transition: "all 0.2s" }}
+                  >
+                    {values[field.key] ? (
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 12 }}>
+                        <img src={values[field.key].startsWith("data:") || values[field.key].startsWith("http") ? values[field.key] : `/images/medicines/${values[field.key]}`} style={{ maxHeight: 100, maxWidth: "100%", objectFit: "contain", borderRadius: 4 }} alt="Preview" onError={(e) => { e.currentTarget.src = values[field.key]; }} />
+                        <span style={{ fontSize: "0.85rem", color: "var(--text-secondary)" }}>Click or drag to replace image</span>
+                      </div>
+                    ) : (
+                      <div style={{ display: "flex", flexDirection: "column", alignItems: "center", gap: 8, color: "var(--text-secondary)" }}>
+                        <ImageIcon size={32} style={{ opacity: 0.5 }} />
+                        <span>Drag & drop an image here, or click to browse</span>
+                      </div>
+                    )}
+                  </div>
+                ) : field.type === "textarea" ? (
+                  <textarea id={`edit-${field.key}`} required={field.required} value={values[field.key] || ""} onChange={(event) => setValues({ ...values, [field.key]: event.target.value })} />
+                ) : field.type === "select" || field.type === "category" || field.type === "role" ? (
+                  <select id={`edit-${field.key}`} required={field.required} value={values[field.key] || ""} onChange={(event) => setValues({ ...values, [field.key]: event.target.value })}>
+                    {field.type !== "select" && <option value="">Choose…</option>}
+                    {(field.type === "category" ? categories.map((row) => ({ value: String(row.categoryId), label: row.categoryName })) : field.type === "role" ? roles.map((row) => ({ value: String(row.userRoleId), label: `${row.userRole} · ${row.userRoleId}` })) : field.options!.map((option) => ({ value: option, label: option }))).map((option) => (
+                      <option key={option.value} value={option.value}>{option.label}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input id={`edit-${field.key}`} type={field.type || "text"} min={field.type === "number" ? "0" : undefined} step={field.key === "price" ? "0.01" : undefined} required={field.required} value={values[field.key] || ""} onChange={(event) => setValues({ ...values, [field.key]: event.target.value })} />
+                )}
+              </div>
+            ))}
+          </div>
+          <div className="modal-actions">
+            <button type="button" className="button" onClick={onClose}>Cancel</button>
+            <button type="submit" className="button button-green"><Check size={14} />Save record</button>
+          </div>
+        </form>
+      </section>
+    </div>
+  );
 }
+
+function ConfirmModal({ dialog, onClose }: { dialog: ConfirmState; onClose: () => void }) {
+  const isDanger = dialog.danger !== false;
+  return (
+    <div className="modal-backdrop" role="presentation" onMouseDown={(event) => { if (event.target === event.currentTarget) onClose(); }}>
+      <section className="modal confirm-modal-card" role="dialog" aria-modal="true" aria-labelledby="confirm-modal-title" style={{ maxWidth: 460, padding: "24px 22px" }}>
+        <div style={{ display: "flex", alignItems: "flex-start", gap: 14, marginBottom: 16 }}>
+          <div style={{ width: 44, height: 44, borderRadius: 12, display: "grid", placeItems: "center", flexShrink: 0, background: isDanger ? "#fee2e2" : "#e0f2fe", color: isDanger ? "#dc2626" : "#0284c7" }}>
+            {isDanger ? <AlertCircle size={22} /> : <CircleAlert size={22} />}
+          </div>
+          <div style={{ flex: 1 }}>
+            <h2 id="confirm-modal-title" style={{ margin: 0, fontSize: 17, fontWeight: 650, color: "#111827", letterSpacing: "-0.4px" }}>{dialog.title}</h2>
+            <p style={{ margin: "4px 0 0", color: "#6b7280", fontSize: "12px" }}>Confirmation required</p>
+          </div>
+          <button className="modal-close" onClick={onClose} aria-label="Close"><X size={18} /></button>
+        </div>
+        <div style={{ background: "#f8fafc", border: "1px solid #e2e8f0", borderRadius: 10, padding: "13px 15px", marginBottom: 18 }}>
+          <p style={{ margin: 0, color: "#334155", fontSize: "13px", lineHeight: "1.5" }}>{dialog.body}</p>
+        </div>
+        <div className="modal-actions" style={{ display: "flex", justifyContent: "flex-end", gap: 9, paddingTop: 0 }}>
+          <button type="button" className="button" onClick={onClose} style={{ minHeight: 36, padding: "0 15px" }}>Keep record</button>
+          <button
+            type="button"
+            className={`button ${isDanger ? "button-danger" : "button-green"}`}
+            style={{ minHeight: 36, padding: "0 16px", fontWeight: 600, ...(isDanger ? { background: "#dc2626", color: "#ffffff", borderColor: "#dc2626" } : {}) }}
+            onClick={() => { onClose(); dialog.onConfirm(); }}
+          >
+            {isDanger ? "Yes, confirm" : "Confirm"}
+          </button>
+        </div>
+      </section>
+    </div>
+  );
+}
+
 
 export default function DashboardPage({ role }: { role: RoleName }) {
   const { session, signOut } = useAuth();
@@ -107,10 +219,73 @@ export default function DashboardPage({ role }: { role: RoleName }) {
   const [activityLoading, setActivityLoading] = useState(false);
   const [activityRefresh, setActivityRefresh] = useState(0);
   const [editor, setEditor] = useState<EditorState | null>(null);
+  const [confirmDialog, setConfirmDialog] = useState<ConfirmState | null>(null);
   const [toast, setToast] = useState<{ text: string; error?: boolean } | null>(null);
   const [checkoutOpen, setCheckoutOpen] = useState(false);
   const [deliveryAddress, setDeliveryAddress] = useState("");
   const [paymentMethod, setPaymentMethod] = useState("Cash on delivery");
+  const avatarStorageKey = session?.userId ? `profile_avatar_${session.userId}` : null;
+  const [profileMode, setProfileMode] = useState<"avatar" | "image">(() => { if (!session?.userId) return "avatar"; const saved = localStorage.getItem(`profile_mode_${session.userId}`); return saved === "image" ? "image" : "avatar"; });
+  const [profileImage, setProfileImage] = useState<string | null>(() => { if (!session?.userId) return null; return localStorage.getItem(`profile_avatar_${session.userId}`) || null; });
+  const [cropSrc, setCropSrc] = useState<string | null>(null);
+  const photoInputRef = useRef<HTMLInputElement>(null);
+  // Philippine address selector state
+  const [phRegions, setPhRegions] = useState<Array<{region_code: string; region_name: string}>>([]);
+  const [phProvinces, setPhProvinces] = useState<Array<{province_code: string; province_name: string; region_code: string}>>([]);
+  const [phCities, setPhCities] = useState<Array<{city_code: string; city_name: string; province_code: string}>>([]);
+  const [phBarangays, setPhBarangays] = useState<Array<{brgy_code: string; brgy_name: string; city_code: string}>>([]);
+  const [addrRegion, setAddrRegion] = useState("");
+  const [addrProvince, setAddrProvince] = useState("");
+  const [addrCity, setAddrCity] = useState("");
+  const [addrBarangay, setAddrBarangay] = useState(""); // stores brgy_code
+  const [addrStreet, setAddrStreet] = useState("");
+  const [phLoading, setPhLoading] = useState<"provinces" | "cities" | "barangays" | null>(null);
+  function handlePhotoUpload(event: React.ChangeEvent<HTMLInputElement>) {
+    const file = event.target.files?.[0];
+    if (!file) return;
+    const reader = new FileReader();
+    reader.onload = () => { setCropSrc(reader.result as string); };
+    reader.readAsDataURL(file);
+    event.target.value = "";
+  }
+  function handleCropDone(croppedDataUrl: string) {
+    setProfileImage(croppedDataUrl);
+    setProfileMode("image");
+    if (avatarStorageKey) { localStorage.setItem(avatarStorageKey, croppedDataUrl); localStorage.setItem(`profile_mode_${session!.userId}`, "image"); }
+    setCropSrc(null);
+  }
+  function switchToAvatar() {
+    setProfileMode("avatar");
+    if (session?.userId) localStorage.setItem(`profile_mode_${session.userId}`, "avatar");
+  }
+
+  // PH Address loader helpers — local JSON files in /public
+  async function phSelectRegion(regionCode: string) {
+    setAddrRegion(regionCode); setAddrProvince(""); setAddrCity(""); setAddrBarangay(""); setPhBarangays([]);
+    if (!regionCode) return;
+    if (phProvinces.length === 0) {
+      setPhLoading("provinces");
+      try {
+        const res = await fetch("/ph-province.json");
+        setPhProvinces(await res.json());
+      } catch { /* offline */ } finally { setPhLoading(null); }
+    }
+  }
+  async function phSelectProvince(provinceCode: string) {
+    setAddrProvince(provinceCode); setAddrCity(""); setAddrBarangay(""); setPhBarangays([]);
+    if (!provinceCode) return;
+    if (phCities.length === 0) {
+      setPhLoading("cities");
+      try {
+        const res = await fetch("/ph-city.json");
+        setPhCities(await res.json());
+      } catch { /* offline */ } finally { setPhLoading(null); }
+    }
+  }
+  // City just updates state — barangay loading is handled by the useEffect below
+  function phSelectCity(cityCode: string) {
+    setAddrCity(cityCode); setAddrBarangay(""); setPhBarangays([]);
+  }
   const currentSection = location.split("/").filter(Boolean)[1] || "overview";
   const section = role === "staff" && currentSection === "inventory" ? "medicines" : currentSection;
 
@@ -122,7 +297,8 @@ export default function DashboardPage({ role }: { role: RoleName }) {
     };
     if (session?.mode === "demo") {
       const sampleOrders = role === "customer" ? demoOrders.filter((order) => order.userId === 301).concat(demoOrders.slice(0, 2).map((order) => ({ ...order, userId: 301 }))) : demoOrders;
-      const next: SectionData = { medicines: [...demoMedicines], categories: [...demoCategories], suppliers: [...demoSuppliers], orders: sampleOrders, cart: role === "customer" ? [...demoCart] : [], users: [...demoUsers], roles: [...demoRoles], activity: role === "staff" ? demoActivity.filter((row) => row.userId === session.userId) : [...demoActivity], profile: role === "customer" ? { userId: session.userId, firstName: "Sample", lastName: "Customer", email: "customer@example.test", contactNumber: "+63 917 000 0000", username: session.username, roleId: 3, createdAt: "2026-09-01T08:00:00Z" } : null };
+      const demoProfile = { userId: session.userId, firstName: role === "admin" ? "Admin" : role === "staff" ? "Staff" : "Sample", lastName: role === "customer" ? "Customer" : "User", email: role === "customer" ? "customer@example.test" : `${role}@example.test`, contactNumber: "+63 917 000 0000", username: session.username, roleId: role === "admin" ? 1 : role === "staff" ? 2 : 3, createdAt: "2026-09-01T08:00:00Z" };
+      const next: SectionData = { medicines: [...demoMedicines], categories: [...demoCategories], suppliers: [...demoSuppliers], orders: sampleOrders, cart: role === "customer" ? [...demoCart] : [], users: [...demoUsers], roles: [...demoRoles], activity: role === "staff" ? demoActivity.filter((row) => row.userId === session.userId) : [...demoActivity], profile: demoProfile };
       setData(next); setActivityTotal(next.activity.length); setActivityMatches(null); setErrors([]); setLoading(false); return;
     }
     if (!session) { setData(EMPTY); setActivityTotal(0); setActivityMatches(null); setErrors(["No active session. Sign in to connect the API."]); setLoading(false); return; }
@@ -137,7 +313,7 @@ export default function DashboardPage({ role }: { role: RoleName }) {
       role === "admin" ? safely("Activity log", () => getActivity(1, 10), { items: [] as ActivityLog[], totalCount: 0, pageSize: 10, currentPage: 1 } as PageResult<ActivityLog>) : role === "staff" ? safely("My activity", () => getUserActivity(session.userId), [] as ActivityLog[]) : Promise.resolve([] as ActivityLog[]),
       role === "customer" && session.userId ? safely("Cart", () => getCart(session.userId), [] as CartItem[]) : Promise.resolve([] as CartItem[]),
       role === "customer" && session.userId ? safely("Orders", () => getCustomerOrders(session.userId), [] as Order[]) : Promise.resolve([] as Order[]),
-      role === "customer" && session.userId ? safely("Profile", () => getUser(session.userId), null as UserRecord | null) : Promise.resolve(null as UserRecord | null),
+      session?.userId ? safely("Profile", () => getUser(session.userId), null as UserRecord | null) : Promise.resolve(null as UserRecord | null),
     ]);
     const activityRows = Array.isArray(activity) ? activity : activity.items;
     const loadedActivityTotal = Array.isArray(activity) ? activityRows.length : activity.totalCount;
@@ -178,8 +354,33 @@ export default function DashboardPage({ role }: { role: RoleName }) {
     return () => { cancelled = true; window.clearTimeout(timer); };
   }, [role, section, session?.mode, page, search, tableSearch, activityRefresh]);
   useEffect(() => { if (!toast) return; const timer = window.setTimeout(() => setToast(null), 4600); return () => window.clearTimeout(timer); }, [toast]);
+  // Load region list the first time the profile section is opened
+  useEffect(() => {
+    if (section !== "profile" || phRegions.length > 0) return;
+    fetch("/ph-region.json").then((r) => r.json()).then(setPhRegions).catch(() => {});
+  }, [section, phRegions.length]);
+  // When addrCity changes (after React commits state), load matching barangays
+  useEffect(() => {
+    if (!addrCity) return;
+    let cancelled = false;
+    setPhLoading("barangays");
+    fetch("/ph-barangay.json")
+      .then((r) => r.json())
+      .then((all) => { if (!cancelled) { setPhBarangays(all); setPhLoading(null); } })
+      .catch(() => { if (!cancelled) setPhLoading(null); });
+    return () => { cancelled = true; };
+  }, [addrCity]);
+  // Pre-populate street input from saved address when profile loads
+  useEffect(() => {
+    if (section === "profile" && data.profile) {
+      setAddrStreet(data.profile.street || "");
+      setAddrRegion(""); setAddrProvince(""); setAddrCity(""); setAddrBarangay("");
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [section, data.profile?.userId]);
 
   const notify = (text: string, error = false) => setToast({ text, error });
+  const askConfirm = (title: string, body: string, onConfirm: () => void, danger = true) => setConfirmDialog({ title, body, danger, onConfirm });
   const commit = async (label: string, task: () => Promise<unknown>, demoAction?: () => void): Promise<boolean> => {
     try {
       if (session?.mode === "demo") { demoAction?.(); notify(`${label} — sample preview only.`); }
@@ -231,14 +432,16 @@ export default function DashboardPage({ role }: { role: RoleName }) {
     if (saved) setEditor(null);
   }
 
-  async function deleteRecord(kind: "medicine" | "category" | "supplier" | "user" | "role" | "order", id: number) {
-    if (!window.confirm(`Delete ${kind} #${id}? This action cannot be undone.`)) return;
-    if (kind === "medicine") await commit("Medicine deleted", () => api.deleteMedicine(id), () => setData((old) => ({ ...old, medicines: old.medicines.filter((row) => row.medicineId !== id) })));
-    if (kind === "category") await commit("Category deleted", () => api.deleteCategory(id), () => setData((old) => ({ ...old, categories: old.categories.filter((row) => row.categoryId !== id) })));
-    if (kind === "supplier") await commit("Supplier deleted", () => api.deleteSupplier(id), () => setData((old) => ({ ...old, suppliers: old.suppliers.filter((row) => row.supplierId !== id) })));
-    if (kind === "user") await commit("User deleted", () => api.deleteUser(id), () => setData((old) => ({ ...old, users: old.users.filter((row) => row.userId !== id) })));
-    if (kind === "role") await commit("Role deleted", () => api.deleteRole(id), () => setData((old) => ({ ...old, roles: old.roles.filter((row) => row.userRoleId !== id) })));
-    if (kind === "order") await commit("Order deleted", () => api.deleteOrder(id), () => setData((old) => ({ ...old, orders: old.orders.filter((row) => row.orderId !== id) })));
+  function deleteRecord(kind: "medicine" | "category" | "supplier" | "user" | "role" | "order", id: number) {
+    const labels: Record<string, string> = { medicine: "Medicine", category: "Category", supplier: "Supplier", user: "User account", role: "Role", order: "Order" };
+    askConfirm(`Delete ${labels[kind] || kind}`, `Are you sure you want to delete ${kind} #${id}? This action is permanent and cannot be undone.`, async () => {
+      if (kind === "medicine") await commit("Medicine deleted", () => api.deleteMedicine(id), () => setData((old) => ({ ...old, medicines: old.medicines.filter((row) => row.medicineId !== id) })));
+      if (kind === "category") await commit("Category deleted", () => api.deleteCategory(id), () => setData((old) => ({ ...old, categories: old.categories.filter((row) => row.categoryId !== id) })));
+      if (kind === "supplier") await commit("Supplier deleted", () => api.deleteSupplier(id), () => setData((old) => ({ ...old, suppliers: old.suppliers.filter((row) => row.supplierId !== id) })));
+      if (kind === "user") await commit("User deleted", () => api.deleteUser(id), () => setData((old) => ({ ...old, users: old.users.filter((row) => row.userId !== id) })));
+      if (kind === "role") await commit("Role deleted", () => api.deleteRole(id), () => setData((old) => ({ ...old, roles: old.roles.filter((row) => row.userRoleId !== id) })));
+      if (kind === "order") await commit("Order deleted", () => api.deleteOrder(id), () => setData((old) => ({ ...old, orders: old.orders.filter((row) => row.orderId !== id) })));
+    });
   }
 
   async function setOrderStatus(orderId: number, next: string) {
@@ -270,9 +473,10 @@ export default function DashboardPage({ role }: { role: RoleName }) {
     await commit("Cart item removed", () => api.removeCart(row.cartId), () => setData((old) => ({ ...old, cart: old.cart.filter((item) => item.cartId !== row.cartId) })));
   }
 
-  async function clearCart() {
-    if (!window.confirm("Remove every item from your cart? This cannot be undone.")) return;
-    await commit("Cart cleared", () => api.clearCart(session!.userId), () => setData((old) => ({ ...old, cart: [] })));
+  function clearCart() {
+    askConfirm("Clear cart", "Remove every item from your cart? This cannot be undone.", async () => {
+      await commit("Cart cleared", () => api.clearCart(session!.userId), () => setData((old) => ({ ...old, cart: [] })));
+    });
   }
 
   async function checkout(event: FormEvent) {
@@ -288,31 +492,69 @@ export default function DashboardPage({ role }: { role: RoleName }) {
 
   async function saveProfile(event: FormEvent<HTMLFormElement>) {
     event.preventDefault(); const form = new FormData(event.currentTarget);
-    const payload = { firstName: String(form.get("firstName") || ""), lastName: String(form.get("lastName") || ""), email: String(form.get("email") || ""), contactNumber: String(form.get("contactNumber") || ""), username: String(form.get("username") || "").trim(), roleId: session?.roleId ?? 3 };
+    // Build separate address fields from the cascading selector state
+    const regionName   = addrRegion   ? phRegions.find((r) => r.region_code   === addrRegion)?.region_name   ?? "" : "";
+    const provinceName = addrProvince ? phProvinces.find((p) => p.province_code === addrProvince)?.province_name ?? "" : "";
+    const cityName     = addrCity     ? phCities.find((c) => c.city_code       === addrCity)?.city_name       ?? "" : "";
+    const barangayName = addrBarangay ? phBarangays.find((b) => b.brgy_code    === addrBarangay)?.brgy_name   ?? "" : "";
+    const payload = {
+      firstName:       String(form.get("firstName")    || ""),
+      lastName:        String(form.get("lastName")     || ""),
+      email:           String(form.get("email")        || ""),
+      contactNumber:   String(form.get("contactNumber") || ""),
+      region:          regionName   || data.profile?.region   || "",
+      province:        provinceName || data.profile?.province || "",
+      cityMunicipality: cityName   || data.profile?.cityMunicipality || "",
+      barangay:        barangayName || data.profile?.barangay || "",
+      street:          addrStreet  || data.profile?.street   || "",
+      username:        String(form.get("username") || "").trim(),
+      roleId:          session?.roleId ?? 3,
+    };
     await commit("Profile updated", () => api.updateUser(session!.userId, payload), () => setData((old) => ({ ...old, profile: { ...(old.profile || { userId: session!.userId, createdAt: new Date().toISOString() }), ...payload } })));
   }
 
   const navTitle: Record<string, string> = { overview: "Overview", medicines: role === "staff" ? "Inventory" : "Medicines", categories: "Categories", suppliers: "Suppliers", orders: role === "customer" ? "My orders" : "Orders", users: "People", roles: "Roles", activity: role === "staff" ? "My activity" : "Activity log", shop: "Browse medicines", cart: "My cart", profile: "My profile" };
   const pageDescription: Record<string, string> = { overview: "Your pharmacy, at a glance.", medicines: "Complete medicine details, availability, and stock controls.", categories: "Organize the medicine catalog by category.", suppliers: "Supplier contact records available in the pharmacy API.", orders: "Review every order, line item, address, payment label, and status.", users: "Manage available account profiles and role assignments.", roles: "Review and maintain API role definitions.", activity: "Audit details returned by the pharmacy API.", shop: "Search the catalog and inspect the medicine information returned by the API.", cart: "Review each item, change quantities, and continue to checkout.", profile: "Review and update your supported account details." };
 
+  const getCustomerUsername = useCallback((userId: number): string | null => {
+    const user = data.users.find((u) => u.userId === userId);
+    if (user?.username) return user.username;
+    if (data.profile?.userId === userId && data.profile?.username) return data.profile.username;
+    if (session?.userId === userId && session?.username) return session.username;
+    return null;
+  }, [data.users, data.profile, session]);
+
+  const getCustomerDisplay = useCallback((userId: number): string => {
+    const username = getCustomerUsername(userId);
+    const user = data.users.find((u) => u.userId === userId);
+    const firstName = user?.firstName || (data.profile?.userId === userId ? data.profile.firstName : "");
+    const lastName = user?.lastName || (data.profile?.userId === userId ? data.profile.lastName : "");
+    const fullName = [firstName, lastName].filter(Boolean).join(" ");
+
+    if (username) {
+      return fullName ? `${username} · ${fullName}` : username;
+    }
+    return fullName || `ID ${userId}`;
+  }, [getCustomerUsername, data.users, data.profile]);
+
   const filteredMedicines = data.medicines.filter((row) => matchingText([row.brandName, row.genericName, row.description, row.dosage, row.manufacturer, row.status, row.medicineId]) && (categoryFilter === "all" || String(row.categoryId) === categoryFilter) && (statusFilter === "all" || (statusFilter === "low" ? row.stockQty > 0 && row.stockQty <= 20 : statusFilter === "out" ? row.stockQty <= 0 || row.status.toLowerCase().includes("out") : statusFilter === "available" ? row.stockQty > 0 && !row.status.toLowerCase().includes("inactive") : row.status.toLowerCase() === statusFilter)));
-  const filteredOrders = data.orders.filter((row) => matchingText([row.orderId, row.userId, row.orderStatus, row.paymentMethod, row.deliveryAddress, row.items.map((item) => `${item.brandName} ${item.genericName} ${item.quantity}`).join(" ")]) && (statusFilter === "all" || row.orderStatus.toLowerCase() === statusFilter));
+  const filteredOrders = data.orders.filter((row) => matchingText([row.orderId, row.userId, getCustomerUsername(row.userId), row.orderStatus, row.paymentMethod, row.deliveryAddress, row.items.map((item) => `${item.brandName} ${item.genericName} ${item.quantity}`).join(" ")]) && (statusFilter === "all" || row.orderStatus.toLowerCase() === statusFilter));
   const apiAdminActivity = role === "admin" && section === "activity" && session?.mode === "api";
   const activitySearchQuery = `${search} ${tableSearch}`.trim();
   const activityRows = apiAdminActivity ? activitySearchQuery ? activityMatches || [] : data.activity : data.activity.filter((row) => matchingText([row.logId, row.userId, row.activity, row.activityDate, row.ipAddress]));
   const activityVisibleRows = apiAdminActivity && !activitySearchQuery ? activityRows : activityRows.slice((page - 1) * 10, page * 10);
   const activityResultCount = apiAdminActivity && !activitySearchQuery ? activityTotal : activityRows.length;
 
-  if (!ROLE_SECTIONS[role].includes(section)) return <AppShell role={role} session={session!} onLogout={logout} search={search} onSearch={setSearch}><Notice errors={errors} onSettings={goSettings} /><section className="panel panel-pad permission-panel"><ShieldCheck size={24} /><h2>This section isn't available for your workspace role</h2><p>Use the navigation for the sections assigned to your account. Restricted records and controls are not loaded here.</p><button className="button button-green" onClick={() => setLocation(`/${role}`)}>Return to overview</button></section></AppShell>;
+  if (!ROLE_SECTIONS[role].includes(section)) return <AppShell role={role} session={session!} onLogout={logout} search={search} onSearch={setSearch} profileImage={profileImage}><Notice errors={errors} onSettings={goSettings} /><section className="panel panel-pad permission-panel"><ShieldCheck size={24} /><h2>This section isn't available for your workspace role</h2><p>Use the navigation for the sections assigned to your account. Restricted records and controls are not loaded here.</p><button className="button button-green" onClick={() => setLocation(`/${role}`)}>Return to overview</button></section></AppShell>;
 
-  return <AppShell role={role} session={session!} onLogout={logout} search={search} onSearch={setSearch}>
+  return <AppShell role={role} session={session!} onLogout={logout} search={search} onSearch={setSearch} profileImage={profileImage}>
     <Notice errors={errors} onSettings={goSettings} />
     {loading && <div className="panel loading-state"><span className="spinner" />Loading pharmacy workspace…</div>}
-    {!loading && section === "overview" && <Overview role={role} data={data} userName={session?.username || "there"} lowStock={lowStock} unavailable={unavailable} pendingOrders={pendingOrders} recordedValue={recordedValue} availableProducts={availableProducts} go={setLocation} />}
+    {!loading && section === "overview" && <Overview role={role} data={data} userName={data.profile?.firstName || session?.username || "there"} lowStock={lowStock} unavailable={unavailable} pendingOrders={pendingOrders} recordedValue={recordedValue} availableProducts={availableProducts} go={setLocation} />}
     {!loading && (section === "medicines" || section === "inventory") && <>
       <PageHeading title={navTitle.medicines} description={pageDescription.medicines} actions={(role === "admin" || role === "staff") ? <button className="button button-green" onClick={() => setEditor({ kind: "medicine" })}><Plus size={15} />Add medicine</button> : undefined} />
       <section className="panel table-panel"><div className="table-toolbar"><SearchBox value={tableSearch} onChange={setTableSearch} placeholder="Search brand, generic, manufacturer…" /><select className="filter-select" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="all">All categories</option>{data.categories.map((row) => <option key={row.categoryId} value={row.categoryId}>{row.categoryName}</option>)}</select><select className="filter-select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All stock states</option><option value="available">Available</option><option value="low">Low stock ≤ 20</option><option value="out">Out of stock</option></select><span className="table-count">{filteredMedicines.length} matching · {data.medicines.length} loaded</span></div>
-        {filteredMedicines.length === 0 ? <Empty title="No medicines found" text="Change the filters or add a medicine record." /> : <><div className="table-wrap"><table><thead><tr><th>Medicine record</th><th>Category</th><th>Dosage / manufacturer</th><th>Price</th><th>Stock</th><th>Status</th><th>Dates</th><th>Actions</th></tr></thead><tbody>{filteredMedicines.slice((page - 1) * 8, page * 8).map((row) => <tr key={row.medicineId}><td><div className="medicine-cell"><img src={row.image || "/medicine-placeholder.svg"} alt="" onError={(event) => { event.currentTarget.src = "/medicine-placeholder.svg"; }} /><span><span className="cell-primary">{row.brandName || "Unnamed medicine"}</span><span className="cell-secondary">{row.genericName || "Generic name not provided"} · ID {row.medicineId}</span><span className="record-detail">{row.description || "No description supplied."}{row.image ? <><br />Image: {row.image}</> : ""}</span></span></div></td><td>{getCategory(data.categories, row.categoryId)}<span className="cell-secondary">Category ID {row.categoryId || "—"}</span></td><td>{row.dosage || "Not provided"}<span className="cell-secondary">{row.manufacturer || "Manufacturer not provided"}</span></td><td className="cell-primary">{money(row.price)}</td><td><strong>{number(row.stockQty)}</strong><span className="cell-secondary">units</span></td><td><Status value={row.status || (row.stockQty > 0 ? "Available" : "Out of stock")} /></td><td>{dateShort(row.updatedAt)}<span className="cell-secondary">Created {dateShort(row.createdAt)}<br />Updated {date(row.updatedAt)}</span></td><td><div className="cell-actions">{(role === "admin" || role === "staff") && <button className="table-action" onClick={() => setEditor({ kind: "medicine", item: row })} title="Edit medicine"><Pencil size={13} />Edit</button>}{role === "admin" && <button className="table-action danger" onClick={() => void deleteRecord("medicine", row.medicineId)} title="Delete medicine"><Trash2 size={13} /></button>}</div></td></tr>)}</tbody></table></div><Pager count={filteredMedicines.length} page={page} setPage={setPage} /></>}
+        {filteredMedicines.length === 0 ? <Empty title="No medicines found" text="Change the filters or add a medicine record." /> : <><div className="table-wrap"><table><thead><tr><th>Medicine record</th><th>Category</th><th>Dosage / manufacturer</th><th>Price</th><th>Stock</th><th>Status</th><th>Dates</th><th>Actions</th></tr></thead><tbody>{filteredMedicines.slice((page - 1) * 8, page * 8).map((row) => <tr key={row.medicineId}><td><div className="medicine-cell"><img src={row.image || "/medicine-placeholder.svg"} alt="" onError={(event) => { event.currentTarget.src = "/medicine-placeholder.svg"; }} /><span><span className="cell-primary">{row.brandName || "Unnamed medicine"}</span><span className="cell-secondary">{row.genericName || "Generic name not provided"} · ID {row.medicineId}</span><span className="record-detail">{row.description || "No description supplied."}</span></span></div></td><td>{getCategory(data.categories, row.categoryId)}<span className="cell-secondary">Category ID {row.categoryId || "—"}</span></td><td>{row.dosage || "Not provided"}<span className="cell-secondary">{row.manufacturer || "Manufacturer not provided"}</span></td><td className="cell-primary">{money(row.price)}</td><td><strong>{number(row.stockQty)}</strong><span className="cell-secondary">units</span></td><td><Status value={row.status || (row.stockQty > 0 ? "Available" : "Out of stock")} /></td><td>{dateShort(row.updatedAt)}<span className="cell-secondary">Created {dateShort(row.createdAt)}<br />Updated {date(row.updatedAt)}</span></td><td><div className="cell-actions">{(role === "admin" || role === "staff") && <button className="table-action" onClick={() => setEditor({ kind: "medicine", item: row })} title="Edit medicine"><Pencil size={13} />Edit</button>}{role === "admin" && <button className="table-action danger" onClick={() => void deleteRecord("medicine", row.medicineId)} title="Delete medicine"><Trash2 size={13} /></button>}</div></td></tr>)}</tbody></table></div><Pager count={filteredMedicines.length} page={page} setPage={setPage} /></>}
 
       </section></>}
     {!loading && section === "categories" && <>
@@ -322,7 +564,7 @@ export default function DashboardPage({ role }: { role: RoleName }) {
         <Pager count={data.categories.filter((row) => matchingText([row.categoryId, row.categoryName])).length} page={page} setPage={setPage} pageSize={10} />
       </section></>}
     {!loading && section === "suppliers" && <>
-      <PageHeading title="Supplier directory" description="Full supplier contacts and statuses. The API does not link supplier records directly to medicine stock." actions={(role === "admin" || role === "staff") ? <button className="button button-green" onClick={() => setEditor({ kind: "supplier" })}><Plus size={15} />Add supplier</button> : undefined} />
+      <PageHeading title="Supplier directory" description="" actions={(role === "admin" || role === "staff") ? <button className="button button-green" onClick={() => setEditor({ kind: "supplier" })}><Plus size={15} />Add supplier</button> : undefined} />
       <section className="panel table-panel"><div className="table-toolbar"><SearchBox value={tableSearch} onChange={setTableSearch} placeholder="Search suppliers and contacts…" /><span className="table-count">{data.suppliers.length} records loaded</span></div>
         {data.suppliers.filter((row) => matchingText([row.supplierId, row.supplierName, row.contactPerson, row.contactNumber, row.email, row.address, row.status])).length === 0 ? <Empty title="No supplier records" text="Supplier records will appear when returned by your API." icon={<Building2 size={22} />} /> : <div className="table-wrap"><table><thead><tr><th>Supplier</th><th>Contact person</th><th>Contact number</th><th>Email</th><th>Address</th><th>Status</th><th>Created / updated</th><th>Actions</th></tr></thead><tbody>{data.suppliers.filter((row) => matchingText([row.supplierId, row.supplierName, row.contactPerson, row.contactNumber, row.email, row.address, row.status])).slice((page - 1) * 8, page * 8).map((row) => <tr key={row.supplierId}><td><span className="cell-primary">{row.supplierName}</span><span className="cell-secondary">Supplier ID {row.supplierId}</span></td><td>{row.contactPerson || "Not provided"}</td><td>{row.contactNumber || "Not provided"}</td><td>{row.email || "Not provided"}</td><td><span className="record-detail">{row.address || "Not provided"}</span></td><td><Status value={row.status} /></td><td>{date(row.createdAt)}<span className="cell-secondary">Updated {date(row.updatedAt)}</span></td><td><div className="cell-actions">{(role === "admin" || role === "staff") && <><button className="table-action" onClick={() => setEditor({ kind: "supplier", item: row })}><Pencil size={13} /></button><button className="table-action danger" onClick={() => void deleteRecord("supplier", row.supplierId)}><Trash2 size={13} /></button></>}</div></td></tr>)}</tbody></table></div>}
         <Pager count={data.suppliers.filter((row) => matchingText([row.supplierId, row.supplierName, row.contactPerson, row.contactNumber, row.email, row.address, row.status])).length} page={page} setPage={setPage} />
@@ -330,28 +572,26 @@ export default function DashboardPage({ role }: { role: RoleName }) {
     {!loading && section === "orders" && <>
       <PageHeading title={navTitle.orders} description={pageDescription.orders} actions={<button className="button" onClick={refresh}><Activity size={14} />Refresh</button>} />
       <section className="panel table-panel"><div className="table-toolbar"><SearchBox value={tableSearch} onChange={setTableSearch} placeholder="Search order, customer, item, address…" /><select className="filter-select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">All statuses</option>{[...new Set(data.orders.map((row) => row.orderStatus))].filter(Boolean).map((status) => <option key={status} value={status.toLowerCase()}>{status}</option>)}</select><span className="table-count">{filteredOrders.length} of {data.orders.length} loaded</span></div>
-        {filteredOrders.length === 0 ? <Empty title="No orders to show" text="Orders returned by the API will appear here. Change the status filter to see other records." icon={<ClipboardList size={22} />} /> : <div className="table-wrap"><table><thead><tr><th>Order / customer</th><th>Date / status</th><th>All order items</th><th>Total / payment label</th><th>Delivery address</th><th>Actions</th></tr></thead><tbody>{filteredOrders.slice((page - 1) * 8, page * 8).map((row) => <tr key={row.orderId}><td><span className="cell-primary">Order #{row.orderId}</span><span className="cell-secondary">Customer ID {row.userId}{data.users.length ? ` · ${data.users.find((user) => user.userId === row.userId)?.firstName || ""} ${data.users.find((user) => user.userId === row.userId)?.lastName || ""}` : ""}</span></td><td>{date(row.orderDate)}<span className="cell-secondary"><Status value={row.orderStatus} /></span></td><td>{row.items.length ? row.items.map((item, index) => { const medicine = data.medicines.find((record) => record.medicineId === item.medicineId); return <span className="order-item-line" key={`${row.orderId}-${item.orderItemId || item.medicineId}-${index}`}><strong>{item.brandName || medicine?.brandName || `Medicine #${item.medicineId}`}</strong> · {item.genericName || medicine?.genericName || "Generic name unavailable"}<span className="cell-secondary">Line item #{item.orderItemId || "not returned"} · Order #{item.orderId || row.orderId} · Medicine ID {item.medicineId} · {item.quantity} × {money(item.unitPrice)} = {money(item.subtotal)}</span></span>; }) : <span className="record-detail">No order-item rows included in this response.</span>}</td><td><span className="cell-primary">{money(row.totalAmount)}</span><span className="cell-secondary">{row.paymentMethod || "Payment label not provided"}</span></td><td><span className="record-detail">{row.deliveryAddress || "Address not provided"}</span></td><td><div className="cell-actions">{(role === "admin" || role === "staff") && <select className="filter-select status-select" aria-label={`Update order ${row.orderId} status`} value={row.orderStatus} onChange={(event) => void setOrderStatus(row.orderId, event.target.value)}>{["Pending", "Processing", "Ready", "Completed", "Cancelled"].map((status) => <option key={status}>{status}</option>)}</select>}{role === "customer" && ["pending", "processing"].includes(row.orderStatus.toLowerCase()) && <button className="table-action danger" title="Cancel this order" onClick={() => { if (window.confirm(`Cancel order #${row.orderId}? This cannot be undone.`)) void cancelOrder(row.orderId); }}><X size={13} />Cancel</button>}{role === "customer" && !["pending", "processing"].includes(row.orderStatus.toLowerCase()) && <span className="table-count" style={{ fontStyle: "italic" }}>{row.orderStatus}</span>}{role === "admin" && <button className="table-action danger" title="Delete order" onClick={() => void deleteRecord("order", row.orderId)}><Trash2 size={13} /></button>}</div></td></tr>)}</tbody></table></div>}
+        {filteredOrders.length === 0 ? <Empty title="No orders to show" text="Orders returned by the API will appear here. Change the status filter to see other records." icon={<ClipboardList size={22} />} /> : <div className="table-wrap"><table><thead><tr><th>Order / customer</th><th>Date / status</th><th>All order items</th><th>Total / payment label</th><th>Delivery address</th>{(role === "admin" || role === "staff") && <th>Actions</th>}</tr></thead><tbody>{filteredOrders.slice((page - 1) * 8, page * 8).map((row) => <tr key={row.orderId}><td><span className="cell-primary">Order #{row.orderId}</span><span className="cell-secondary">{getCustomerDisplay(row.userId)}</span></td><td>{date(row.orderDate)}<span className="cell-secondary"><Status value={row.orderStatus} /></span></td><td>{row.items.length ? row.items.map((item, index) => { const medicine = data.medicines.find((record) => record.medicineId === item.medicineId); return <span className="order-item-line" key={`${row.orderId}-${item.orderItemId || item.medicineId}-${index}`}><strong>{item.brandName || medicine?.brandName || `Medicine #${item.medicineId}`}</strong> · {item.genericName || medicine?.genericName || "Generic name unavailable"}<span className="cell-secondary">Line item #{item.orderItemId || "not returned"} · Order #{item.orderId || row.orderId} · Medicine ID {item.medicineId} · {item.quantity} × {money(item.unitPrice)} = {money(item.subtotal)}</span></span>; }) : <span className="record-detail">No order-item rows included in this response.</span>}</td><td><span className="cell-primary">{money(row.totalAmount)}</span><span className="cell-secondary">{row.paymentMethod || "Payment label not provided"}</span></td><td><span className="record-detail">{row.deliveryAddress || "Address not provided"}</span></td>{(role === "admin" || role === "staff") && <td><div className="cell-actions">{(role === "admin" || role === "staff") && <select className="filter-select status-select" aria-label={`Update order ${row.orderId} status`} value={row.orderStatus} onChange={(event) => void setOrderStatus(row.orderId, event.target.value)}>{["Pending", "Processing", "Ready", "Completed", "Cancelled"].map((status) => <option key={status}>{status}</option>)}</select>}{role === "admin" && <button className="table-action danger" title="Delete order" onClick={() => void deleteRecord("order", row.orderId)}><Trash2 size={13} /></button>}</div></td>}</tr>)}</tbody></table></div>}
         <Pager count={filteredOrders.length} page={page} setPage={setPage} />
       </section></>}
     {!loading && section === "users" && <>
       <PageHeading title="People & accounts" description="" actions={<button className="button button-green" onClick={() => setEditor({ kind: "user" })}><Plus size={15} />Add user</button>} />
 
       <section className="panel table-panel"><div className="table-toolbar"><SearchBox value={tableSearch} onChange={setTableSearch} placeholder="Search name, username, email, or ID…" /><span className="table-count">{data.users.length} users loaded</span></div>
-        {data.users.filter((row) => matchingText([row.userId, row.firstName, row.lastName, row.username, row.email, row.contactNumber, labelForRole(row.roleId)])).length === 0 ? <Empty title="No user records available" text="The API may require an administrator token for this section." icon={<Users size={22} />} /> : <div className="table-wrap"><table><thead><tr><th>User ID / name</th><th>Username</th><th>Email</th><th>Contact number</th><th>Role</th><th>Account created</th><th>Actions</th></tr></thead><tbody>{data.users.filter((row) => matchingText([row.userId, row.firstName, row.lastName, row.username, row.email, row.contactNumber, labelForRole(row.roleId)])).slice((page - 1) * 8, page * 8).map((row) => <tr key={row.userId}><td><span className="cell-primary">{row.firstName} {row.lastName}</span><span className="cell-secondary">User ID {row.userId}</span></td><td>{row.username}</td><td>{row.email || "Not provided"}</td><td>{row.contactNumber || "Not provided"}</td><td><Status value={labelForRole(row.roleId)} /></td><td>{date(row.createdAt)}</td><td><div className="cell-actions"><button className="table-action" onClick={() => setEditor({ kind: "user", item: row })}><Pencil size={13} />Edit</button><button className="table-action danger" onClick={() => void deleteRecord("user", row.userId)}><Trash2 size={13} /></button></div></td></tr>)}</tbody></table></div>}
+        {data.users.filter((row) => matchingText([row.userId, row.firstName, row.lastName, row.username, row.email, row.contactNumber, labelForRole(row.roleId)])).length === 0 ? <Empty title="No user records available" text="The API may require an administrator token for this section." icon={<Users size={22} />} /> : <div className="table-wrap"><table><thead><tr><th>Name</th><th>Username</th><th>Email</th><th>Contact number</th><th>Role</th><th>Account created</th><th>Actions</th></tr></thead><tbody>{data.users.filter((row) => matchingText([row.userId, row.firstName, row.lastName, row.username, row.email, row.contactNumber, labelForRole(row.roleId)])).slice((page - 1) * 8, page * 8).map((row) => { const rowAvatar = localStorage.getItem(`profile_avatar_${row.userId}`); const rowInitials = ((row.firstName?.[0] || "") + (row.lastName?.[0] || "")).toUpperCase() || (row.username?.[0] || "?").toUpperCase(); return <tr key={row.userId}><td><div style={{ display: "flex", alignItems: "center", gap: 9 }}>{rowAvatar ? <img src={rowAvatar} alt="" style={{ width: 30, height: 30, borderRadius: "50%", objectFit: "cover", flexShrink: 0, border: "1.5px solid #e8eae8" }} /> : <div style={{ width: 30, height: 30, borderRadius: "50%", background: "#e5f4ed", color: "#126b57", display: "flex", alignItems: "center", justifyContent: "center", fontSize: 11, fontWeight: 700, flexShrink: 0, border: "1.5px solid #c9e0d4" }}>{rowInitials}</div>}<span className="cell-primary">{row.firstName} {row.lastName}</span></div></td><td>{row.username}</td><td>{row.email || "Not provided"}</td><td>{row.contactNumber || "Not provided"}</td><td><Status value={labelForRole(row.roleId)} /></td><td>{date(row.createdAt)}</td><td><div className="cell-actions"><button className="table-action" onClick={() => setEditor({ kind: "user", item: row })}><Pencil size={13} />Edit</button><button className="table-action danger" onClick={() => void deleteRecord("user", row.userId)}><Trash2 size={13} /></button></div></td></tr>; })}</tbody></table></div>}
         <Pager count={data.users.filter((row) => matchingText([row.userId, row.firstName, row.lastName, row.username, row.email, row.contactNumber, labelForRole(row.roleId)])).length} page={page} setPage={setPage} />
       </section></>}
     {!loading && section === "roles" && <>
-      <PageHeading title="Role definitions" description="Roles configured in the API. Public sign-up remains fixed to customer role ID 3." actions={<button className="button button-green" onClick={() => setEditor({ kind: "role" })}><Plus size={15} />Add role</button>} />
-      <div className="inline-alert" style={{ marginBottom: 13 }}><ShieldCheck size={16} /><span>API role IDs used by this app: 1 admin, 2 mod/staff, 3 user/customer. Changing role definitions does not change the API's claim-based policies.</span></div>
+      <PageHeading title="Role definitions" actions={<button className="button button-green" onClick={() => setEditor({ kind: "role" })}><Plus size={15} />Add role</button>} />
       <section className="panel table-panel"><div className="table-toolbar"><SearchBox value={tableSearch} onChange={setTableSearch} placeholder="Search role names…" /><span className="table-count">{data.roles.length} role definitions</span></div><div className="table-wrap"><table><thead><tr><th>Role ID</th><th>Role name</th><th>Current app mapping</th><th>Actions</th></tr></thead><tbody>{data.roles.filter((row) => matchingText([row.userRoleId, row.userRole])).slice((page - 1) * 10, page * 10).map((row) => <tr key={row.userRoleId}><td>{row.userRoleId}</td><td className="cell-primary">{row.userRole}</td><td>{row.userRoleId === 1 ? "Administrator" : row.userRoleId === 2 ? "Staff / mod" : row.userRoleId === 3 ? "Customer / user" : "Unmapped role"}</td><td><div className="cell-actions"><button className="table-action" onClick={() => setEditor({ kind: "role", item: row })}><Pencil size={13} /></button><button className="table-action danger" onClick={() => void deleteRecord("role", row.userRoleId)}><Trash2 size={13} /></button></div></td></tr>)}</tbody></table></div><Pager count={data.roles.filter((row) => matchingText([row.userRoleId, row.userRole])).length} page={page} setPage={setPage} pageSize={10} /></section></>}
     {!loading && section === "activity" && <>
-      <PageHeading title={navTitle.activity} description={role === "admin" ? "API full-text search covers activity and IP address. Unfiltered results use the API's date-descending paginated endpoint; matching search results are paged here because the API search returns a list." : "Staff activity is limited to the records returned by the current-user API route."} actions={<button className="button" onClick={refresh}><Activity size={14} />Refresh activity</button>} />
-      {role === "staff" && <div className="inline-alert" style={{ marginBottom: 13 }}><ShieldCheck size={16} /><span>Staff activity is limited to records available from `GET /api/activitylog/user/{session?.userId}`.</span></div>}
+      <PageHeading title={navTitle.activity} description={role === "admin" ? "API full-text search covers activity and IP address. Unfiltered results use the API's date-descending paginated endpoint; matching search results are paged here because the API search returns a list." : ""} actions={<button className="button" onClick={refresh}><Activity size={14} />Refresh activity</button>} />
       <section className="panel table-panel"><div className="table-toolbar"><SearchBox value={tableSearch} onChange={(value) => { setTableSearch(value); setPage(1); }} placeholder={role === "admin" ? "Search activity description or IP…" : "Search my activity entries…"} /><span className="table-count">{number(activityResultCount)} {activitySearchQuery ? "matching" : "log"} entries{apiAdminActivity && !activitySearchQuery ? " · API paginated" : ""}</span></div>{activityLoading ? <Empty title="Loading activity" text="Requesting audit records from the API…" icon={<Activity size={22} />} /> : activityVisibleRows.length === 0 ? <Empty title="No activity entries" text="The API did not return activity records for this role or search." icon={<Activity size={22} />} /> : <div className="table-wrap"><table><thead><tr><th>Log ID</th><th>Date and time</th><th>User ID</th><th>Full activity</th><th>IP address</th></tr></thead><tbody>{activityVisibleRows.map((row) => <tr key={row.logId}><td className="cell-primary">#{row.logId}</td><td>{date(row.activityDate)}</td><td>{row.userId}</td><td><span className="record-detail">{row.activity}</span></td><td>{row.ipAddress || "Not recorded"}</td></tr>)}</tbody></table></div>}<Pager count={activityResultCount} page={page} setPage={setPage} pageSize={10} /></section></>}
     {!loading && section === "shop" && <>
       <PageHeading title="Browse medicines" description="" actions={<button className="button" onClick={() => setLocation("/customer/cart")}><ShoppingCart size={15} />Cart · {data.cart.length}</button>} />
       <div className="table-toolbar panel" style={{ marginBottom: 13 }}><SearchBox value={tableSearch} onChange={setTableSearch} placeholder="Search brand, generic, or description…" /><select className="filter-select" value={categoryFilter} onChange={(event) => setCategoryFilter(event.target.value)}><option value="all">All categories</option>{data.categories.map((row) => <option key={row.categoryId} value={row.categoryId}>{row.categoryName}</option>)}</select><select className="filter-select" value={statusFilter} onChange={(event) => setStatusFilter(event.target.value)}><option value="all">Any availability</option><option value="available">Available</option><option value="out">Out of stock</option></select><span className="table-count">{filteredMedicines.length} available records</span></div>
-      {filteredMedicines.length === 0 ? <section className="panel"><Empty title="No medicines match your search" text="Try a different name or category, or check the API connection." icon={<ShoppingBag size={22} />} /></section> : <div className="shop-grid">{filteredMedicines.slice((page - 1) * 9, page * 9).map((row) => { const available = row.stockQty > 0 && !row.status.toLowerCase().includes("inactive") && !row.status.toLowerCase().includes("out"); return <article className="panel product-card" key={row.medicineId}><div className="product-art"><img className="product-fallback" src={row.image || "/medicine-placeholder.svg"} alt={row.image ? `${row.brandName} package` : "Generic package illustration"} onError={(event) => { event.currentTarget.src = "/medicine-placeholder.svg"; }} />{available && row.stockQty <= 20 && <span className="product-stock-warning">Low stock</span>}</div><div className="product-content"><div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}><div><h3>{row.brandName}</h3><div className="generic-name">{row.genericName}</div></div><Status value={available ? (row.stockQty <= 20 ? "Low stock" : "Available") : "Out of stock"} /></div><div className="product-description">{row.description || "No description supplied by the API."}</div><div className="product-info"><span>{getCategory(data.categories, row.categoryId)} · {row.dosage || "Dosage not specified"}</span><span>{row.manufacturer || "Manufacturer not specified"} · {number(row.stockQty)} units shown</span></div><div className="product-bottom"><span className="product-price">{money(row.price)}</span><button className="button button-green button-small" disabled={!available} onClick={() => void addCart(row)}><ShoppingCart size={13} />Add</button></div></div></article>; })}</div>}
+      {filteredMedicines.length === 0 ? <section className="panel"><Empty title="No medicines match your search" text="Try a different name or category, or check the API connection." icon={<ShoppingBag size={22} />} /></section> : <div className="shop-grid">{filteredMedicines.slice((page - 1) * 9, page * 9).map((row) => { const available = row.stockQty > 0 && !row.status.toLowerCase().includes("inactive") && !row.status.toLowerCase().includes("out"); const catName = getCategory(data.categories, row.categoryId); return <article className="panel product-card" key={row.medicineId}><div className="product-art" style={{ position: "relative", height: 180, overflow: "hidden", background: "#fcfdfd" }}>{row.image ? <><img className="product-fallback" src={`/images/medicines/${row.image}`} alt={`${row.brandName} package`} loading="lazy" style={{ width: "100%", height: "100%", objectFit: "contain", backgroundColor: "#fff" }} onError={(event) => { event.currentTarget.style.display = "none"; (event.currentTarget.nextElementSibling as HTMLElement).style.display = "flex"; }} /><div style={{ display: "none", position: "absolute", inset: 0, width: "100%", height: "100%", alignItems: "center", justifyContent: "center", background: "#f3f4f6" }}><ShoppingBag size={48} color="#9ca3af" strokeWidth={1} /></div></> : <div style={{ position: "absolute", inset: 0, width: "100%", height: "100%", display: "flex", alignItems: "center", justifyContent: "center", background: "#f3f4f6" }}><ShoppingBag size={48} color="#9ca3af" strokeWidth={1} /></div>}{available && row.stockQty <= 20 && <span className="product-stock-warning" style={{ zIndex: 2 }}>Low stock</span>}</div><div className="product-content"><div style={{ display: "flex", alignItems: "flex-start", justifyContent: "space-between", gap: 8 }}><div><h3>{row.brandName}</h3><div className="generic-name">{row.genericName}</div></div><Status value={available ? (row.stockQty <= 20 ? "Low stock" : "Available") : "Out of stock"} /></div><div className="product-description">{row.description || "No description supplied by the API."}</div><div className="product-info"><span>{catName} · {row.dosage || "Dosage not specified"}</span><span>{row.manufacturer || "Manufacturer not specified"} · {number(row.stockQty)} units shown</span></div><div className="product-bottom"><span className="product-price">{money(row.price)}</span><div style={{ display: "flex", gap: 6 }}><button className="button button-small" disabled={!available} onClick={() => { addCart(row).then(() => setLocation("/customer/cart")); }}><ShoppingBag size={13} />Buy</button><button className="button button-green button-small" disabled={!available} onClick={() => void addCart(row)}><Plus size={13} />Add</button></div></div></div></article>; })}</div>}
       <div style={{ marginTop: 12 }}><Pager count={filteredMedicines.length} page={page} setPage={setPage} pageSize={9} /></div>
     </>}
     {!loading && section === "cart" && <>
@@ -359,12 +599,157 @@ export default function DashboardPage({ role }: { role: RoleName }) {
       {data.cart.length === 0 ? <section className="panel"><Empty title="Your cart is empty" text="Browse available medicines and add an item to get started." icon={<ShoppingCart size={22} />} /><div style={{ textAlign: "center", padding: "0 0 22px" }}><button className="button button-green" onClick={() => setLocation("/customer/shop")}>Browse medicines <ArrowRight size={14} /></button></div></section> : <div className="cart-layout"><section className="panel panel-pad"><div className="panel-title-row"><div><h3>Items in this cart</h3><p>{data.cart.length} distinct medicine records</p></div><button className="table-action danger" onClick={() => void clearCart()}>Clear cart</button></div>{data.cart.slice((page - 1) * 8, page * 8).map((item) => { const medicine = data.medicines.find((row) => row.medicineId === item.medicineId); const unitPrice = medicine?.price ?? item.subtotal / Math.max(1, item.quantity); return <div className="cart-item" key={item.cartId}><div className="mini-icon"><img src={medicine?.image || "/medicine-placeholder.svg"} alt="" onError={(event) => { event.currentTarget.src = "/medicine-placeholder.svg"; }} /></div><div className="list-copy"><strong>{medicine?.brandName || `Medicine #${item.medicineId}`}</strong><span>{medicine?.genericName || "Generic name not returned"} · {medicine ? getCategory(data.categories, medicine.categoryId) : "Category unavailable"}</span><span>{medicine?.dosage || "Dosage not supplied"} · Added {date(item.addedAt)}</span><span>Cart ID {item.cartId} · Account ID {item.userId}</span><div className="quantity-control" style={{ marginTop: 9 }}><button aria-label="Decrease quantity" onClick={() => void updateCartQuantity(item, item.quantity - 1)}>−</button><span>{item.quantity}</span><button aria-label="Increase quantity" onClick={() => void updateCartQuantity(item, item.quantity + 1)}>+</button><span style={{ marginLeft: 8, color: "#77817b" }}>{money(unitPrice)} each</span></div></div><div style={{ textAlign: "right" }}><strong>{money(unitPrice * item.quantity)}</strong><span className="cell-secondary">Subtotal</span><button className="table-action danger" style={{ marginTop: 8 }} onClick={() => void removeCart(item)}><Trash2 size={13} />Remove</button></div></div>; })}<Pager count={data.cart.length} page={page} setPage={setPage} /></section><aside className="panel panel-pad"><div className="panel-title-row"><div><h3>Order summary</h3><p>Price totals use the current medicine record.</p></div></div><div className="checkout-summary"><div className="summary-line"><span>Items ({data.cart.reduce((total, row) => total + row.quantity, 0)} units)</span><strong>{money(currentCartTotal)}</strong></div><div className="summary-line"><span>Delivery</span><span>Set at checkout</span></div><div className="summary-total"><span>Estimated total</span><strong>{money(currentCartTotal)}</strong></div><div className="inline-alert"><CircleAlert size={14} /><span>This API records a payment-method label only. Checkout here does not collect or charge payment.</span></div><button className="button button-green" onClick={() => setCheckoutOpen(true)}><Check size={14} />Continue to checkout</button></div></aside></div>}
     </>}
     {!loading && section === "profile" && <>
-      <PageHeading title="My profile" description="Review and update the account fields supported by your pharmacy API." />
-      {!data.profile ? <section className="panel"><Empty title="Profile unavailable" text="The API did not return this profile. Check your account ID, token, and API permissions." icon={<Users size={22} />} /></section> : <section className="panel panel-pad" style={{ maxWidth: 720 }}><form className="auth-form" onSubmit={saveProfile}><div className="detail-card"><div className="detail-item"><small>User ID</small><strong>{data.profile.userId}</strong></div><div className="detail-item"><small>Role</small><strong>{labelForRole(data.profile.roleId)}</strong></div><div className="detail-item"><small>Created</small><strong>{date(data.profile.createdAt)}</strong></div><div className="detail-item"><small>API account</small><strong>{data.profile.username}</strong></div></div><div className="form-grid"><div className="form-field"><label>First name</label><input name="firstName" required defaultValue={data.profile.firstName} /></div><div className="form-field"><label>Last name</label><input name="lastName" required defaultValue={data.profile.lastName} /></div><div className="form-field"><label>Email</label><input name="email" type="email" defaultValue={data.profile.email} /></div><div className="form-field"><label>Contact number</label><input name="contactNumber" defaultValue={data.profile.contactNumber || ""} /></div><div className="form-field full"><label>Username</label><input name="username" required defaultValue={data.profile.username} /></div></div><div className="inline-alert"><ShieldCheck size={15} /><span>This form preserves your current role ID. The API should enforce self-only updates server-side.</span></div><button className="button button-green" type="submit"><Check size={14} />Save profile</button></form></section>}
+      <PageHeading title="My profile" description={role === "customer" ? "Review and update your account details and delivery address." : "Review and update your account details."} />
+      {!data.profile ? <section className="panel"><Empty title="Profile unavailable" text="The API did not return this profile. Check your account ID, token, and API permissions." icon={<Users size={22} />} /></section> : <section className="panel panel-pad" style={{ maxWidth: 800 }}>
+        <div className="profile-layout">
+          <div className="profile-photo-col">
+            <div className="profile-photo-card">
+              <p className="profile-photo-label">Profile picture</p>
+              <div className="profile-avatar-preview">
+                {profileMode === "image" && profileImage
+                  ? <img src={profileImage} alt="Profile" className="profile-avatar-img" />
+                  : <div className="profile-avatar-initials">{(data.profile.firstName?.[0] || data.profile.username?.[0] || "?").toUpperCase()}{(data.profile.lastName?.[0] || "").toUpperCase()}</div>
+                }
+                <button type="button" className="profile-camera-btn" title="Upload photo" aria-label="Upload profile photo" onClick={() => photoInputRef.current?.click()}>
+                  <Camera size={14} />
+                </button>
+              </div>
+              {/* Single hidden file input always in the DOM */}
+              <input ref={photoInputRef} type="file" accept="image/*" onChange={handlePhotoUpload} className="sr-only" />
+
+              {profileMode === "image" && profileImage && <button type="button" className="profile-remove-photo" onClick={() => { setProfileImage(null); setProfileMode("avatar"); if (avatarStorageKey) localStorage.removeItem(avatarStorageKey); if (session?.userId) localStorage.setItem(`profile_mode_${session.userId}`, "avatar"); }}>Remove photo</button>}
+              {profileMode === "avatar" && <p className="profile-photo-hint">Your initials are used as your avatar. Switch to Photo to upload a custom image.</p>}
+              {profileMode === "image" && !profileImage && <button type="button" className="profile-upload-area" onClick={() => photoInputRef.current?.click()}>
+                <ImageIcon size={22} /><span>Click to upload a photo</span><small>JPG, PNG or WEBP</small>
+              </button>}
+            </div>
+          </div>
+          <form className="auth-form profile-form-col" onSubmit={saveProfile}>
+            <div className="form-grid">
+              <div className="form-field"><label>First name</label><input name="firstName" required defaultValue={data.profile.firstName} /></div>
+              <div className="form-field"><label>Last name</label><input name="lastName" required defaultValue={data.profile.lastName} /></div>
+              <div className="form-field"><label>Email</label><input name="email" type="email" defaultValue={data.profile.email} /></div>
+              <div className="form-field"><label>Contact number</label><input name="contactNumber" defaultValue={data.profile.contactNumber || ""} /></div>
+              <div className="form-field full"><label>Username</label><input name="username" required defaultValue={data.profile.username} /></div>
+              {/* Philippine Address Selector — Region → Province → City → Barangay + Street */}
+              <div className="form-field full" style={{ gap: 8 }}>
+                <label style={{ marginBottom: 4 }}>Delivery address</label>
+                {/* Show currently saved address from database */}
+                {(data.profile.region || data.profile.barangay || data.profile.cityMunicipality || data.profile.street) && (
+                  <div style={{ padding: "8px 12px", background: "var(--surface-hover, #f0faf5)", border: "1px solid var(--border)", borderRadius: 8, fontSize: "12.5px", color: "var(--text-secondary)", marginBottom: 6 }}>
+                    <strong style={{ color: "var(--text-primary)" }}>Currently saved:</strong>{" "}
+                    {[data.profile.street, data.profile.barangay, data.profile.cityMunicipality, data.profile.province, data.profile.region].filter(Boolean).join(", ")}
+                  </div>
+                )}
+                <div style={{ display: "grid", gridTemplateColumns: "1fr 1fr", gap: "8px 10px" }}>
+                  {/* Region */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Region</span>
+                    <select
+                      id="addr-region"
+                      value={addrRegion}
+                      onChange={(e) => void phSelectRegion(e.target.value)}
+                      disabled={phRegions.length === 0}
+                      style={{ width: "100%" }}
+                    >
+                      <option value="">{phRegions.length === 0 ? "Loading regions…" : "— Select Region —"}</option>
+                      {phRegions.map((r) => <option key={r.region_code} value={r.region_code}>{r.region_name}</option>)}
+                    </select>
+                  </div>
+                  {/* Province */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Province</span>
+                    <select
+                      id="addr-province"
+                      value={addrProvince}
+                      onChange={(e) => void phSelectProvince(e.target.value)}
+                      disabled={!addrRegion || phLoading === "provinces"}
+                      style={{ width: "100%" }}
+                    >
+                      <option value="">{phLoading === "provinces" ? "Loading…" : !addrRegion ? "Select region first" : "— Select Province —"}</option>
+                      {phProvinces.filter((p) => p.region_code === addrRegion).map((p) => <option key={p.province_code} value={p.province_code}>{p.province_name}</option>)}
+                    </select>
+                  </div>
+                  {/* City / Municipality */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>City / Municipality</span>
+                    <select
+                      id="addr-city"
+                      value={addrCity}
+                      onChange={(e) => void phSelectCity(e.target.value)}
+                      disabled={!addrProvince || phLoading === "cities"}
+                      style={{ width: "100%" }}
+                    >
+                      <option value="">{phLoading === "cities" ? "Loading…" : !addrProvince ? "Select province first" : "— Select City —"}</option>
+                      {phCities.filter((c) => c.province_code === addrProvince).map((c) => <option key={c.city_code} value={c.city_code}>{c.city_name}</option>)}
+                    </select>
+                  </div>
+                  {/* Barangay */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4 }}>
+                    <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>Barangay</span>
+                    <select
+                      id="addr-barangay"
+                      value={addrBarangay}
+                      onChange={(e) => setAddrBarangay(e.target.value)}
+                      disabled={!addrCity || phLoading === "barangays"}
+                      style={{ width: "100%" }}
+                    >
+                      <option value="">{phLoading === "barangays" ? "Loading barangays…" : !addrCity ? "Select city first" : "— Select Barangay —"}</option>
+                      {phBarangays.filter((b) => b.city_code === addrCity).map((b) => <option key={b.brgy_code} value={b.brgy_code}>{b.brgy_name}</option>)}
+                    </select>
+                  </div>
+                  {/* Street / House No. — full width */}
+                  <div style={{ display: "flex", flexDirection: "column", gap: 4, gridColumn: "1 / -1" }}>
+                    <span style={{ fontSize: "11px", fontWeight: 600, color: "var(--text-secondary)", textTransform: "uppercase", letterSpacing: "0.04em" }}>House / Unit No. &amp; Street</span>
+                    <input
+                      id="addr-street"
+                      type="text"
+                      placeholder="e.g. 123 Rizal St."
+                      value={addrStreet}
+                      onChange={(e) => setAddrStreet(e.target.value)}
+                      style={{ width: "100%" }}
+                    />
+                  </div>
+                </div>
+                {/* Hidden input carries the composed address string for FormData */}
+                <input
+                  type="hidden"
+                  name="address"
+                  value={[
+                    addrStreet,
+                    addrBarangay ? phBarangays.find((b) => b.brgy_code === addrBarangay)?.brgy_name : "",
+                    addrCity ? phCities.find((c) => c.city_code === addrCity)?.city_name : "",
+                    addrProvince ? phProvinces.find((p) => p.province_code === addrProvince)?.province_name : "",
+                    addrRegion ? phRegions.find((r) => r.region_code === addrRegion)?.region_name : "",
+                  ].filter(Boolean).join(", ")}
+                />
+                {(addrRegion || addrCity) && (
+                  <p style={{ margin: "6px 0 0", fontSize: "11.5px", color: "var(--text-secondary)" }}>
+                    📍 {
+                      [
+                        addrStreet,
+                        addrBarangay ? phBarangays.find((b) => b.brgy_code === addrBarangay)?.brgy_name : "",
+                        addrCity ? phCities.find((c) => c.city_code === addrCity)?.city_name : "",
+                        addrProvince ? phProvinces.find((p) => p.province_code === addrProvince)?.province_name : "",
+                        addrRegion ? phRegions.find((r) => r.region_code === addrRegion)?.region_name : "",
+                      ].filter(Boolean).join(", ") || "—"
+                    }
+                  </p>
+                )}
+              </div>
+            </div>
+
+            <button className="button button-green" type="submit"><Check size={14} />Save profile</button>
+          </form>
+        </div>
+      </section>}
     </>}
     {!loading && !["overview", "medicines", "inventory", "categories", "suppliers", "orders", "users", "roles", "activity", "shop", "cart", "profile"].includes(section) && <section className="panel"><Empty title="Section not found" text="Use the workspace navigation to choose an available section." /></section>}
+    {cropSrc && <CropModal src={cropSrc} onDone={handleCropDone} onCancel={() => setCropSrc(null)} />}
+
 
     {editor && <EditorDialog key={`${editor.kind}-${(editor.item as Record<string, unknown> | undefined)?.medicineId ?? (editor.item as Record<string, unknown> | undefined)?.categoryId ?? (editor.item as Record<string, unknown> | undefined)?.supplierId ?? (editor.item as Record<string, unknown> | undefined)?.userId ?? (editor.item as Record<string, unknown> | undefined)?.userRoleId ?? "new"}`} editor={editor} categories={data.categories} roles={data.roles.length ? data.roles : demoRoles} onClose={() => setEditor(null)} onSubmit={(values) => void saveRecord(values)} />}
+    {confirmDialog && <ConfirmModal dialog={confirmDialog} onClose={() => setConfirmDialog(null)} />}
     {checkoutOpen && <div className="modal-backdrop" onMouseDown={(event) => { if (event.target === event.currentTarget) setCheckoutOpen(false); }}><section className="modal" role="dialog" aria-modal="true" aria-labelledby="checkout-title"><div className="modal-head"><div><h2 id="checkout-title">Delivery details</h2><p>Confirm the address and payment-method label for the API order.</p></div><button className="modal-close" onClick={() => setCheckoutOpen(false)} aria-label="Close"><X size={20} /></button></div><form className="auth-form" onSubmit={(event) => void checkout(event)}><div className="form-field"><label htmlFor="delivery-address">Delivery address</label><textarea id="delivery-address" required value={deliveryAddress} onChange={(event) => setDeliveryAddress(event.target.value)} placeholder="Street, city, postal code" /></div><div className="form-field"><label htmlFor="payment-method">Payment method (label only)</label><select id="payment-method" value={paymentMethod} onChange={(event) => setPaymentMethod(event.target.value)}><option>Cash on delivery</option><option>Card at pickup</option><option>Bank transfer</option><option>Other — confirm with pharmacy</option></select></div><div className="inline-alert"><AlertCircle size={15} /><span>No payment is processed by this API. Confirm payment directly with the pharmacy.</span></div><div className="modal-actions"><button className="button" type="button" onClick={() => setCheckoutOpen(false)}>Back</button><button className="button button-green" type="submit"><ShoppingBag size={14} />Place order · {money(currentCartTotal)}</button></div></form></section></div>}
     {toast && <div className={`toast-message ${toast.error ? "error" : ""}`} role={toast.error ? "alert" : "status"}>{toast.text}</div>}
   </AppShell>;
@@ -411,8 +796,6 @@ function Overview({ role, data, userName, lowStock, unavailable, pendingOrders, 
       <Metric label="Inventory value" value={money(inventoryValue)} note="Current stock × listed price; display currency is not converted" icon={<PackagePlus size={16} />} tone="good" />
       <Metric label="Orders in progress" value={number(pendingOrders.length)} note="Pending, processing, or ready" icon={<ClipboardList size={16} />} tone={pendingOrders.length ? "warn" : "normal"} />
       <Metric label="Recorded order value" value={money(recordedValue)} note="Non-cancelled order totals returned" icon={<ArrowUpRight size={16} />} tone="good" />
-      <Metric label="Unique delivery areas" value={number(sortedAreas.length)} note="Distinct regions identified" icon={<MapPin size={16} />} />
-      <Metric label="Top delivery area" value={topAreas.length > 0 ? topAreas[0][0] : "None"} note={topAreas.length > 0 ? `${topAreas[0][1]} orders` : "No location data"} icon={<Map size={16} />} tone="good" />
     </> : role === "staff" ? <>
       <Metric label="Orders to process" value={number(pendingOrders.length)} note="Current pending / processing / ready records" icon={<ClipboardList size={16} />} tone={pendingOrders.length ? "warn" : "good"} />
       <Metric label="Medicine records" value={number(data.medicines.length)} note="Complete catalog records loaded" icon={<Boxes size={16} />} />
@@ -425,8 +808,8 @@ function Overview({ role, data, userName, lowStock, unavailable, pendingOrders, 
       <Metric label="Available medicines" value={number(availableProducts.length)} note="Current catalog records with stock" icon={<ShoppingBag size={16} />} />
     </>}</div>
     <div className="dashboard-grid"><div className="primary-stack">
-      <section className="panel panel-pad"><div className="panel-title-row"><div><h3>{role === "customer" ? "Your order value" : "Order activity"}</h3><p>Daily order totals · last 7 calendar days · cancelled orders excluded</p></div><span className="status-pill status-neutral">API records</span></div><div className="chart-total"><strong>{money(lastWeek.reduce((sum, day) => sum + day.total, 0))}</strong><span>Recorded in this range</span></div><div className="overview-chart">{lastWeek.map((day, index) => <div className="chart-column" key={`${day.label}-${index}`} title={`${day.label}: ${money(day.total)}`}><div className={`chart-bar ${index === lastWeek.length - 1 ? "selected" : ""}`} style={{ height: `${Math.max(day.total ? 11 : 3, (day.total / maxBar) * 83)}%` }} /><span className="chart-label">{day.label}</span></div>)}</div></section>
-      {role !== "customer" && <section className="panel panel-pad"><div className="panel-title-row"><div><h3>Recent orders</h3><p>Each row includes every returned line item and order field.</p></div><button className="sub-action" onClick={() => go(`/${role}/orders`)}>All orders →</button></div>{ordersByRecent.length ? <div className="list-stack">{ordersByRecent.map((order) => <div className="list-row" key={order.orderId}><div className="mini-icon"><ClipboardList size={17} /></div><div className="list-copy"><strong>Order #{order.orderId} · customer {order.userId}</strong><span>{date(order.orderDate)} · {order.items.length} line items{order.paymentMethod ? ` · ${order.paymentMethod}` : ""}</span><span>{order.items.map((item) => `${item.brandName || `Medicine #${item.medicineId}`} × ${item.quantity} (${money(item.subtotal)})`).join(" · ") || "No item details included"}</span><span>{order.deliveryAddress || "Delivery address not provided"}</span></div><div className="list-trailing">{money(order.totalAmount)}<div style={{ marginTop: 6 }}><Status value={order.orderStatus} /></div></div></div>)}</div> : <Empty title="No orders returned" text="The orders endpoint has no records available for this role." icon={<ClipboardList size={20} />} />}</section>}
+      <section className="panel panel-pad"><div className="panel-title-row"><div><h3>{role === "customer" ? "Your order value" : "Order activity"}</h3><p>Daily order totals · last 7 calendar days · cancelled orders excluded</p></div></div><div className="chart-total"><strong>{money(lastWeek.reduce((sum, day) => sum + day.total, 0))}</strong><span>Recorded in this range</span></div><div className="overview-chart">{lastWeek.map((day, index) => <div className="chart-column" key={`${day.label}-${index}`} title={`${day.label}: ${money(day.total)}`}><div className={`chart-bar ${index === lastWeek.length - 1 ? "selected" : ""}`} style={{ height: `${Math.max(day.total ? 11 : 3, (day.total / maxBar) * 83)}%` }} /><span className="chart-label">{day.label}</span></div>)}</div></section>
+      {role !== "customer" && <section className="panel panel-pad"><div className="panel-title-row"><div><h3>Recent orders</h3><p>Each row includes every returned line item and order field.</p></div><button className="sub-action" onClick={() => go(`/${role}/orders`)}>All orders →</button></div>{ordersByRecent.length ? <div className="list-stack">{ordersByRecent.map((order) => { const customerUser = data.users.find((u) => u.userId === order.userId); return <div className="list-row" key={order.orderId}><div className="mini-icon"><ClipboardList size={17} /></div><div className="list-copy"><strong>Order #{order.orderId} · {customerUser?.username || `ID ${order.userId}`}</strong><span>{date(order.orderDate)} · {order.items.length} line items{order.paymentMethod ? ` · ${order.paymentMethod}` : ""}</span><span>{order.items.map((item) => `${item.brandName || `Medicine #${item.medicineId}`} × ${item.quantity} (${money(item.subtotal)})`).join(" · ") || "No item details included"}</span><span>{order.deliveryAddress || "Delivery address not provided"}</span></div><div className="list-trailing">{money(order.totalAmount)}<div style={{ marginTop: 6 }}><Status value={order.orderStatus} /></div></div></div>; })}</div> : <Empty title="No orders returned" text="The orders endpoint has no records available for this role." icon={<ClipboardList size={20} />} />}</section>}
       {role === "admin" && <section className="panel panel-pad"><div className="panel-title-row"><div><h3>Popular delivery areas</h3><p>Top 5 locations by order volume · {sortedAreas.length} total areas</p></div><div className="metric-icon"><MapPin size={16} /></div></div>{topAreas.length > 0 ? <div className="list-stack">{topAreas.map(([areaName, count]) => { const pct = Math.round((count / totalOrdersWithArea) * 100); return <div className="list-row" key={areaName}><div className="mini-icon"><MapPin size={17} /></div><div className="list-copy" style={{ flex: 1, minWidth: 0 }}><strong>{areaName}</strong><span>{count} orders ({pct}%)</span><div style={{ marginTop: 8, height: 6, background: "var(--border)", borderRadius: 3, overflow: "hidden", width: "100%", maxWidth: 350 }}><div style={{ height: "100%", background: "var(--accent)", width: `${Math.max(2, (count / topAreaMax) * 100)}%` }} /></div></div><div className="list-trailing">{pct}%</div></div>; })}</div> : <Empty title="No delivery data yet" text="Areas will appear once orders with addresses are processed." icon={<MapPin size={20} />} />}</section>}
       {role === "customer" && <section className="panel panel-pad"><div className="panel-title-row"><div><h3>Your recent orders</h3><p>Full item/status/address details are available in My orders.</p></div><button className="sub-action" onClick={() => go("/customer/orders")}>All orders →</button></div>{data.orders.length ? <div className="list-stack">{ordersByRecent.map((order) => <div className="list-row" key={order.orderId}><div className="mini-icon"><ClipboardList size={17} /></div><div className="list-copy"><strong>Order #{order.orderId} · {order.items.map((item) => item.brandName || `#${item.medicineId}`).join(", ") || "Items unavailable"}</strong><span>{date(order.orderDate)} · {order.items.length} items · {order.deliveryAddress || "Address not provided"}</span></div><div className="list-trailing">{money(order.totalAmount)}<div style={{ marginTop: 6 }}><Status value={order.orderStatus} /></div></div></div>)}</div> : <Empty title="No orders yet" text="Your orders will appear here after checkout." icon={<ClipboardList size={20} />} />}</section>}
     </div><aside className="support-stack">

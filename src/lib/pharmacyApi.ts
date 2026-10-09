@@ -79,6 +79,11 @@ export interface UserRecord {
   lastName: string;
   email: string;
   contactNumber?: string | null;
+  region?: string | null;
+  province?: string | null;
+  cityMunicipality?: string | null;
+  barangay?: string | null;
+  street?: string | null;
   username: string;
   roleId: number;
   createdAt?: string;
@@ -323,6 +328,11 @@ export function normalizeUser(value: unknown): UserRecord {
     lastName: String(readField(value, "lastName", "LastName", "")),
     email: String(readField(value, "email", "Email", "")),
     contactNumber: readField(value, "contactNumber", "ContactNumber", ""),
+    region: readField(value, "region", "Region", ""),
+    province: readField(value, "province", "Province", ""),
+    cityMunicipality: readField(value, "cityMunicipality", "CityMunicipality", ""),
+    barangay: readField(value, "barangay", "Barangay", ""),
+    street: readField(value, "street", "Street", ""),
     username: String(readField(value, "username", "Username", "")),
     roleId: Number(readField(value, "roleId", "RoleId", 3)),
     createdAt: readField(value, "createdAt", "CreatedAt", ""),
@@ -504,9 +514,9 @@ export async function registerCustomer(input: {
   return { token, userId, username: String(data.username ?? input.username), roleId: 3, mode: "api" };
 }
 
-export async function requestPasswordReset(username: string): Promise<{ message: string; resetToken?: string }> {
+export async function requestPasswordReset(emailOrPhone: string): Promise<{ message: string; resetToken?: string }> {
   const data = await request<Record<string, unknown>>("/api/auth/forgot-password", {
-    method: "POST", body: JSON.stringify({ username }),
+    method: "POST", body: JSON.stringify({ emailOrPhone }),
   }, false);
   return { message: String(data.message ?? "If the account exists, reset instructions will be provided."), resetToken: data.resetToken ? String(data.resetToken) : undefined };
 }
