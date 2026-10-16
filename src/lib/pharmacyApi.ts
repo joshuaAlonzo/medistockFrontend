@@ -61,6 +61,8 @@ export interface Order {
   paymentMethod?: string | null;
   deliveryAddress?: string | null;
   orderStatus: string;
+  deliveryLatitude?: number | null;
+  deliveryLongitude?: number | null;
   items: OrderItem[];
 }
 
@@ -84,6 +86,8 @@ export interface UserRecord {
   cityMunicipality?: string | null;
   barangay?: string | null;
   street?: string | null;
+  latitude?: number | null;
+  longitude?: number | null;
   username: string;
   roleId: number;
   createdAt?: string;
@@ -262,6 +266,25 @@ export function normalizeMedicine(value: unknown): Medicine {
   };
 }
 
+/** Fallback shown when a medicine has no usable image. */
+export const MEDICINE_PLACEHOLDER = "/medicine-placeholder.svg";
+
+/**
+ * Resolve a medicine's `image` value into a renderable <img src>.
+ *
+ * The API stores one of three shapes in `image`:
+ *  - an inline data URI (e.g. "data:image/png;base64,…")  → used as-is
+ *  - an absolute/remote URL (http/https)                   → used as-is
+ *  - a bare filename that lives in /public/images/medicines → prefixed with that folder
+ * Anything empty/missing falls back to the shared placeholder.
+ */
+export function medicineImageSrc(image?: string | null): string {
+  const value = (image || "").trim();
+  if (!value) return MEDICINE_PLACEHOLDER;
+  if (value.startsWith("data:") || value.startsWith("http") || value.startsWith("/")) return value;
+  return `/images/medicines/${value}`;
+}
+
 export function normalizeCategory(value: unknown): Category {
   return {
     categoryId: Number(readField(value, "categoryId", "CategoryId", 0)),
@@ -306,6 +329,8 @@ export function normalizeOrder(value: unknown): Order {
     paymentMethod: readField(value, "paymentMethod", "PaymentMethod", ""),
     deliveryAddress: readField(value, "deliveryAddress", "DeliveryAddress", ""),
     orderStatus: String(readField(value, "orderStatus", "OrderStatus", "Pending")),
+    deliveryLatitude: readField<number | null>(value, "deliveryLatitude", "DeliveryLatitude", null),
+    deliveryLongitude: readField<number | null>(value, "deliveryLongitude", "DeliveryLongitude", null),
     items: Array.isArray(items) ? items.map(normalizeOrderItem) : [],
   };
 }
@@ -333,6 +358,8 @@ export function normalizeUser(value: unknown): UserRecord {
     cityMunicipality: readField(value, "cityMunicipality", "CityMunicipality", ""),
     barangay: readField(value, "barangay", "Barangay", ""),
     street: readField(value, "street", "Street", ""),
+    latitude: readField<number | null>(value, "latitude", "Latitude", null),
+    longitude: readField<number | null>(value, "longitude", "Longitude", null),
     username: String(readField(value, "username", "Username", "")),
     roleId: Number(readField(value, "roleId", "RoleId", 3)),
     createdAt: readField(value, "createdAt", "CreatedAt", ""),
@@ -598,8 +625,8 @@ export const api = {
   async updateCart(id: number, quantity: number, subtotal: number) { return request<unknown>(`/api/cart/${id}`, { method: "PUT", body: JSON.stringify({ quantity, subtotal }) }); },
   async removeCart(id: number) { return request<unknown>(`/api/cart/${id}`, { method: "DELETE" }); },
   async clearCart(userId: number) { return request<unknown>(`/api/cart/user/${userId}/clear`, { method: "DELETE" }); },
-  async checkout(userId: number, paymentMethod: string, deliveryAddress: string) { return request<unknown>("/api/order/checkout", { method: "POST", body: JSON.stringify({ userId, paymentMethod, deliveryAddress }) }); },
-  async updateUser(id: number, value: Partial<UserRecord> & { username: string; roleId: number; newPassword?: string }) { return request<unknown>(`/api/user/${id}`, { method: "PUT", body: JSON.stringify(value) }); },
+  async checkout(userId: number, paymentMethod: string, deliveryAddress: string, latitude?: number, longitude?: number) { return request<unknown>("/api/order/checkout", { method: "POST", body: JSON.stringify({ userId, paymentMethod, deliveryAddress, deliveryLatitude: latitude ?? null, deliveryLongitude: longitude ?? null }) }); },
+  async updateUser(id: number, value: Partial<UserRecord> & { username: string; roleId: number; newPassword?: string; latitude?: number | null; longitude?: number | null }) { return request<unknown>(`/api/user/${id}`, { method: "PUT", body: JSON.stringify(value) }); },
   async createUser(value: { username: string; password: string; roleId: number; firstName: string; lastName: string; email: string; contactNumber: string }) { return request<unknown>("/api/user", { method: "POST", body: JSON.stringify(value) }); },
   async deleteUser(id: number) { return request<unknown>(`/api/user/${id}`, { method: "DELETE" }); },
   async createRole(userRole: string) { return request<unknown>("/api/userrole", { method: "POST", body: JSON.stringify({ userRole }) }); },
